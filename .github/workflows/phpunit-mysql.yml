@@ -57,7 +57,6 @@ jobs:
           coverage: none
 
       - name: Set up PHPUnit
-        working-directory: apps/${{ env.APP_NAME }}
         run: composer i
 
       - name: Set up Nextcloud
@@ -68,7 +67,7 @@ jobs:
           ./occ maintenance:install --verbose --database=mysql --database-name=nextcloud --database-host=127.0.0.1 --database-port=$DB_PORT --database-user=root --database-pass=rootpassword --admin-user admin --admin-pass password
 
       - name: PHPUnit
-        run: NOCOVERAGE=true TEST_SELECTION=DB ./autotest.sh sqlite
+        run: NOCOVERAGE=true TEST_SELECTION=DB PHPUNIT_EXE=./vendor/phpunit/phpunit/phpunit ./autotest.sh sqlite
 
   summary:
     runs-on: ubuntu-latest
