@@ -44,12 +44,13 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php-versions }}
-          tools: phpunit:9
           extensions: mbstring, iconv, fileinfo, intl, mysql, pdo_mysql
           coverage: none
 
       - name: composer i
-        run: composer i
+        run: |
+          composer i
+          composer require --dev phpunit/phpunit
 
       - name: Set up Nextcloud
         env:
@@ -60,7 +61,7 @@ jobs:
 
       - name: PHPUnit
         working-directory: tests
-        run: phpunit --configuration phpunit-autotest.xml --group DB,SLOWDB
+        run: ../vendor/bin/phpunit --configuration phpunit-autotest.xml --group DB,SLOWDB
 
   summary:
     runs-on: ubuntu-latest
