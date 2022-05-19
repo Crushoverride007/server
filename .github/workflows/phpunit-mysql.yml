@@ -59,7 +59,8 @@ jobs:
           ./occ maintenance:install --verbose --database=mysql --database-name=nextcloud --database-host=127.0.0.1 --database-port=$DB_PORT --database-user=root --database-pass=rootpassword --admin-user admin --admin-pass password
 
       - name: PHPUnit
-        run: NOCOVERAGE=true ./autotest.sh mariadb
+        working-directory: tests
+        run: phpunit --configuration phpunit-autotest.xml --group DB,SLOWDB
 
   summary:
     runs-on: ubuntu-latest
