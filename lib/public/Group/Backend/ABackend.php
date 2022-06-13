@@ -65,4 +65,15 @@ abstract class ABackend implements GroupInterface {
 
 		return (bool)($actions & $implements);
 	}
+
+	public function searchInGroup(string $gid, string $search = '', int $limit = -1, int $offset = 0): array {
+		// Default implementation for compatibility reasons
+		$displayNameCache = Server::get(DisplayNameCache::class);
+		$userManager = Server::get(IUserManager::class);
+		$users = [];
+		foreach ($this->usersInGroup($gid, $search, $limit, $offset) as $userId) {
+			$users[$userId] = new LazyUser($userId, $displayNameCache, $userManager);
+		}
+		return $users;
+	}
 }

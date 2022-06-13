@@ -31,17 +31,27 @@ class LazyUser implements IUser {
 	private ?IUser $user = null;
 	private DisplayNameCache $displayNameCache;
 	private string $uid;
+	private ?string $displayName;
 	private IUserManager $userManager;
+	private ?UserInterface $backend;
 
-	public function __construct(string $uid, DisplayNameCache $displayNameCache, IUserManager $userManager) {
+	public function __construct(string $uid, DisplayNameCache $displayNameCache, IUserManager $userManager, ?string $displayName = null, ?UserInterface $backend = null) {
 		$this->displayNameCache = $displayNameCache;
 		$this->uid = $uid;
 		$this->userManager = $userManager;
+		$this->displayName = $displayName;
+		$this->backend = $backend;
 	}
 
 	private function getUser(): IUser {
 		if ($this->user === null) {
-			$this->user = $this->userManager->get($this->uid);
+			if ($this->backend) {
+				/** @var \OC\User\Manager $manager */
+				$manager = $this->userManager;
+				$this->user = $manager->getUserObject($this->uid, $this->backend);
+			} else {
+				$this->user = $this->userManager->get($this->uid);
+			}
 		}
 		/** @var IUser */
 		$user = $this->user;
@@ -53,6 +63,10 @@ class LazyUser implements IUser {
 	}
 
 	public function getDisplayName() {
+		if ($this->displayName) {
+			return $this->displayName;
+		}
+
 		return $this->displayNameCache->getDisplayName($this->uid);
 	}
 
