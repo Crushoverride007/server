@@ -9,7 +9,7 @@ on:
       - stable*
 
 jobs:
-  phpunit-sqlite:
+  phpunit-custom:
     runs-on: ubuntu-latest
 
     steps:
@@ -19,11 +19,14 @@ jobs:
           submodules: true
           path: server
 
+      - name: Install dependencies
+        run: |
+          sudo sed -i -e "s/\# deb-src/deb-src/g" /etc/apt/sources.list
+          sudo apt-get update
+          sudo apt-get build-dep php php-ldap php-zip php-curl php-mbstsring php-intl php-gd php-imagick
+
       - name: Checkout php
-        uses: actions/checkout@v3
-        with:
-          repository: php/php-src
-          path: php-src
+        run: git clone --depth=1 https://github.com/php/php-src.git
 
       - name: Build php
         working-directory: php-src
