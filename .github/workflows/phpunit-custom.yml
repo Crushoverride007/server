@@ -1,0 +1,42 @@
+name: PHPUnit custom
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - stable*
+
+jobs:
+  phpunit-sqlite:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout server
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+          path: server
+
+      - name: Checkout php
+        uses: actions/checkout@v3
+        with:
+          repository: php/php-src
+          path: php-src
+
+      - name: Build php
+        working-directory: php-src
+        run: |
+          ./buildconf
+          ./configure --with-ldap --with-ldap-sasl --with-zip --with-curl --with-openssl --with-zlib --enable-mbstring --enable-pcntl --enable-intl --with-password-argon2 --with-freetype --with-jpeg --enable-gd --with-imagick
+          make
+
+      - name: composer i
+        run: |
+          composer i
+          composer require --dev phpunit/phpunit
+
+      - name: PHPUnit
+        working-directory: server
+        run: PATH=../php-src/sapi/cli:$PATH ./autotest.sh sqlite
