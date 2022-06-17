@@ -87,7 +87,8 @@ interface GroupInterface {
 	public function getUserGroups($uid);
 
 	/**
-	 * get a list of all groups
+	 * @brief Get a list of all groups
+	 *
 	 * @param string $search
 	 * @param int $limit
 	 * @param int $offset
@@ -99,12 +100,39 @@ interface GroupInterface {
 	public function getGroups($search = '', $limit = -1, $offset = 0);
 
 	/**
-	 * check if a group exists
+	 * @brief Check if a group exists
+	 *
 	 * @param string $gid
 	 * @return bool
 	 * @since 4.5.0
 	 */
 	public function groupExists($gid);
+
+	/**
+	 * @brief Batch method to check if a list of groups exists
+	 *
+	 * The default implementation in ABackend will just call groupExists in
+	 * a loop. But a GroupBackend implementation should provides a more optimized
+	 * override this method to provide a more optimized way to execute this operation.
+	 *
+	 * @param list<string> $gids
+	 * @return list<string> the list of group that exists
+	 * @since 25.0.0
+	 */
+	public function groupsExists(array $gids): array;
+
+	/**
+	 * @brief Batch method to get the group details of a list of groups
+	 *
+	 * The default implementation in ABackend will just call getGroupDetail in
+	 * a loop. But a GroupBackend implementation should provides a more optimized
+	 * override this method to provide a more optimized way to execute this operation.
+	 *
+	 * @throw \RuntimeException if called on a backend that doesn't implements IGroupDetailsBackend
+	 *
+	 * @since 25.0.0
+	 */
+	public function getGroupsDetails(array $gids): array;
 
 	/**
 	 * get a list of all users in a group
