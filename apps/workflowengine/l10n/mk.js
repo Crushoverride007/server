@@ -46,8 +46,9 @@ OC.L10N.register(
     "PDF documents" : "PDF документи",
     "Custom mimetype" : "Прилагоден тип на датотеки",
     "Please enter a valid time span" : "Внесете валиден времески осег",
-    "Others" : "Останати",
     "Desktop client" : "Клиент за компјутер",
+    "Select groups" : "Одбери групи",
+    "Groups" : "Групи",
     "When" : "Кога",
     "and" : "и",
     "Cancel" : "Откажи",
@@ -83,10 +84,6 @@ OC.L10N.register(
     "between" : "помеѓу",
     "not between" : "не помеѓу",
     "is member of" : "е член на",
-    "is not member of" : "не е член на",
-    "Select a tag" : "Избери ознака",
-    "No results" : "Нема резултати",
-    "%s (invisible)" : "%s (невидливо)",
-    "%s (restricted)" : "%s (ограничена)"
+    "is not member of" : "не е член на"
 },
 "nplurals=2; plural=(n % 10 == 1 && n % 100 != 11) ? 0 : 1;");

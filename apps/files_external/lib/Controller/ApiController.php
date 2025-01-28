@@ -3,61 +3,35 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Jesús Macias <jmacias@solidgear.es>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2017-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Files_External\Controller;
 
 use OCA\Files_External\Lib\StorageConfig;
+use OCA\Files_External\ResponseDefinitions;
 use OCA\Files_External\Service\UserGlobalStoragesService;
 use OCA\Files_External\Service\UserStoragesService;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
+use OCP\Constants;
 use OCP\IRequest;
-use OCP\IUserSession;
 
+/**
+ * @psalm-import-type Files_ExternalMount from ResponseDefinitions
+ */
 class ApiController extends OCSController {
-
-	/** @var IUserSession */
-	private $userSession;
-	/** @var UserGlobalStoragesService */
-	private $userGlobalStoragesService;
-	/** @var UserStoragesService */
-	private $userStoragesService;
 
 	public function __construct(
 		string $appName,
 		IRequest $request,
-		IUserSession $userSession,
-		UserGlobalStoragesService $userGlobalStorageService,
-		UserStoragesService $userStorageService
+		private UserGlobalStoragesService $userGlobalStoragesService,
+		private UserStoragesService $userStoragesService,
 	) {
 		parent::__construct($appName, $request);
-
-		$this->userSession = $userSession;
-		$this->userGlobalStoragesService = $userGlobalStorageService;
-		$this->userStoragesService = $userStorageService;
 	}
 
 	/**
@@ -66,7 +40,7 @@ class ApiController extends OCSController {
 	 * @param string $mountPoint mount point name, relative to the data dir
 	 * @param StorageConfig $mountConfig mount config to format
 	 *
-	 * @return array entry
+	 * @return Files_ExternalMount
 	 */
 	private function formatMount(string $mountPoint, StorageConfig $mountConfig): array {
 		// split path from mount point
@@ -77,32 +51,34 @@ class ApiController extends OCSController {
 
 		$isSystemMount = $mountConfig->getType() === StorageConfig::MOUNT_TYPE_ADMIN;
 
-		$permissions = \OCP\Constants::PERMISSION_READ;
+		$permissions = Constants::PERMISSION_READ;
 		// personal mounts can be deleted
 		if (!$isSystemMount) {
-			$permissions |= \OCP\Constants::PERMISSION_DELETE;
+			$permissions |= Constants::PERMISSION_DELETE;
 		}
 
 		$entry = [
+			'id' => $mountConfig->getId(),
+			'type' => 'dir',
 			'name' => basename($mountPoint),
 			'path' => $path,
-			'type' => 'dir',
-			'backend' => $mountConfig->getBackend()->getText(),
-			'scope' => $isSystemMount ? 'system' : 'personal',
 			'permissions' => $permissions,
-			'id' => $mountConfig->getId(),
+			'scope' => $isSystemMount ? 'system' : 'personal',
+			'backend' => $mountConfig->getBackend()->getText(),
 			'class' => $mountConfig->getBackend()->getIdentifier(),
+			'config' => $mountConfig->jsonSerialize(true),
 		];
 		return $entry;
 	}
 
 	/**
-	 * @NoAdminRequired
+	 * Get the mount points visible for this user
 	 *
-	 * Returns the mount points visible for this user.
+	 * @return DataResponse<Http::STATUS_OK, list<Files_ExternalMount>, array{}>
 	 *
-	 * @return DataResponse share information
+	 * 200: User mounts returned
 	 */
+	#[NoAdminRequired]
 	public function getUserMounts(): DataResponse {
 		$entries = [];
 		$mountPoints = [];

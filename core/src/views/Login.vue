@@ -1,27 +1,11 @@
 <!--
-  - @copyright 2019 Christoph Wurst <christoph@winzerhof-wurst.at>
-  -
-  - @author 2019 Christoph Wurst <christoph@winzerhof-wurst.at>
-  -
-  - @license GNU AGPL version 3 or any later version
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU Affero General Public License as
-  - published by the Free Software Foundation, either version 3 of the
-  - License, or (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  - GNU Affero General Public License for more details.
-  -
-  - You should have received a copy of the GNU Affero General Public License
-  - along with this program.  If not, see <http://www.gnu.org/licenses/>.
-  -->
+  - SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 
 <template>
 	<div class="guest-box login-box">
-		<div v-if="!hideLoginForm || directLogin">
+		<template v-if="!hideLoginForm || directLogin">
 			<transition name="fade" mode="out-in">
 				<div v-if="!passwordlessLogin && !resetPassword && resetPasswordTarget === ''">
 					<LoginForm :username.sync="user"
@@ -31,6 +15,7 @@
 						:errors="errors"
 						:throttle-delay="throttleDelay"
 						:auto-complete-allowed="autoCompleteAllowed"
+						:email-states="emailStates"
 						@submit="loading = true" />
 					<a v-if="canResetPassword && resetPasswordLink !== ''"
 						id="lost-password"
@@ -64,21 +49,23 @@
 					</template>
 				</div>
 				<div v-else-if="!loading && passwordlessLogin"
-					key="reset"
-					class="login-additional">
+					key="reset-pw-less"
+					class="login-additional login-passwordless">
 					<PasswordLessLoginForm :username.sync="user"
 						:redirect-url="redirectUrl"
 						:auto-complete-allowed="autoCompleteAllowed"
 						:is-https="isHttps"
 						:is-localhost="isLocalhost"
-						:has-public-key-credential="hasPublicKeyCredential"
 						@submit="loading = true" />
-					<a href="#" class="login-box__link" @click.prevent="passwordlessLogin = false">
+					<NcButton type="tertiary"
+						:aria-label="t('core', 'Back to login form')"
+						:wide="true"
+						@click="passwordlessLogin = false">
 						{{ t('core', 'Back') }}
-					</a>
+					</NcButton>
 				</div>
 				<div v-else-if="!loading && canResetPassword"
-					key="reset"
+					key="reset-can-reset"
 					class="login-additional">
 					<div class="lost-password-container">
 						<ResetPassword v-if="resetPassword"
@@ -93,14 +80,14 @@
 						@done="passwordResetFinished" />
 				</div>
 			</transition>
-		</div>
-		<div v-else>
+		</template>
+		<template v-else>
 			<transition name="fade" mode="out-in">
-				<NcNoteCard type="warning" :title="t('core', 'Login form is disabled.')">
-					{{ t('core', 'Please contact your administrator.') }}
+				<NcNoteCard type="info" :title="t('core', 'Login form is disabled.')">
+					{{ t('core', 'The Nextcloud login form is disabled. Use another login option if available or contact your administration.') }}
 				</NcNoteCard>
 			</transition>
-		</div>
+		</template>
 
 		<div id="alternative-logins" class="alternative-logins">
 			<NcButton v-for="(alternativeLogin, index) in alternativeLogins"
@@ -109,8 +96,7 @@
 				:wide="true"
 				:class="[alternativeLogin.class]"
 				role="link"
-				:href="alternativeLogin.href"
-				@click="goTo(alternativeLogin.href)">
+				:href="alternativeLogin.href">
 				{{ alternativeLogin.name }}
 			</NcButton>
 		</div>
@@ -174,8 +160,8 @@ export default {
 			alternativeLogins: loadState('core', 'alternativeLogins', []),
 			isHttps: window.location.protocol === 'https:',
 			isLocalhost: window.location.hostname === 'localhost',
-			hasPublicKeyCredential: typeof (window.PublicKeyCredential) !== 'undefined',
 			hideLoginForm: loadState('core', 'hideLoginForm', false),
+			emailStates: loadState('core', 'emailStates', []),
 		}
 	},
 
@@ -183,9 +169,6 @@ export default {
 		passwordResetFinished() {
 			this.resetPasswordTarget = ''
 			this.directLogin = true
-		},
-		goTo(href) {
-			window.location.href = href
 		},
 	},
 }
@@ -197,7 +180,9 @@ body {
 }
 
 .login-box {
-	width: 300px;
+	// Same size as dashboard panels
+	width: 320px;
+	box-sizing: border-box;
 
 	&__link {
 		display: block;
@@ -207,9 +192,11 @@ body {
 		font-weight: normal !important;
 	}
 }
+
 .fade-enter-active, .fade-leave-active {
 	transition: opacity .3s;
 }
+
 .fade-enter, .fade-leave-to /* .fade-leave-active below version 2.1.8 */ {
 	opacity: 0;
 }
@@ -221,6 +208,12 @@ body {
 
 	.button-vue {
 		box-sizing: border-box;
+	}
+}
+
+.login-passwordless {
+	.button-vue {
+		margin-top: 0.5rem;
 	}
 }
 </style>

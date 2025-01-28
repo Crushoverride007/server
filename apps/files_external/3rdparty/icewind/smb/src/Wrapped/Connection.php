@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\SMB\Wrapped;
@@ -99,7 +98,7 @@ class Connection extends RawConnection {
 		} else {
 			$error = $this->readError(); // maybe something on stderr
 			if ($error) {
-				throw new ConnectException('Unknown error (' . $error . ')');
+				throw new ConnectException('Unknown error (stderr: ' . $error . ')');
 			} else {
 				throw new ConnectException('Unknown error');
 			}

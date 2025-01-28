@@ -1,28 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Robin Appelman <robin@icewind.nl>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCA\DAV\Tests\Files;
@@ -30,10 +9,10 @@ namespace OCA\DAV\Tests\Files;
 use OC\Files\Search\SearchComparison;
 use OC\Files\Search\SearchQuery;
 use OC\Files\View;
-use OCA\DAV\Connector\Sabre\ObjectTree;
 use OCA\DAV\Connector\Sabre\Directory;
 use OCA\DAV\Connector\Sabre\File;
 use OCA\DAV\Connector\Sabre\FilesPlugin;
+use OCA\DAV\Connector\Sabre\ObjectTree;
 use OCA\DAV\Files\FileSearchBackend;
 use OCP\Files\FileInfo;
 use OCP\Files\Folder;
@@ -41,6 +20,7 @@ use OCP\Files\IRootFolder;
 use OCP\Files\Search\ISearchBinaryOperator;
 use OCP\Files\Search\ISearchComparison;
 use OCP\Files\Search\ISearchQuery;
+use OCP\FilesMetadata\IFilesMetadataManager;
 use OCP\IUser;
 use OCP\Share\IManager;
 use SearchDAV\Backend\SearchPropertyDefinition;
@@ -75,6 +55,10 @@ class FileSearchBackendTest extends TestCase {
 	private $davFolder;
 
 	protected function setUp(): void {
+		if (PHP_VERSION_ID >= 80400) {
+			$this->markTestSkipped('SearchDAV is not yet PHP 8.4 compatible');
+		}
+
 		parent::setUp();
 
 		$this->user = $this->createMock(IUser::class);
@@ -86,9 +70,11 @@ class FileSearchBackendTest extends TestCase {
 			->disableOriginalConstructor()
 			->getMock();
 
-		$this->view = $this->getMockBuilder(View::class)
-			->disableOriginalConstructor()
-			->getMock();
+		$this->view = $this->createMock(View::class);
+
+		$this->view->expects($this->any())
+			->method('getRoot')
+			->willReturn('');
 
 		$this->view->expects($this->any())
 			->method('getRelativePath')
@@ -112,10 +98,12 @@ class FileSearchBackendTest extends TestCase {
 			->method('get')
 			->willReturn($this->searchFolder);
 
-		$this->search = new FileSearchBackend($this->tree, $this->user, $this->rootFolder, $this->shareManager, $this->view);
+		$filesMetadataManager = $this->createMock(IFilesMetadataManager::class);
+
+		$this->search = new FileSearchBackend($this->tree, $this->user, $this->rootFolder, $this->shareManager, $this->view, $filesMetadataManager);
 	}
 
-	public function testSearchFilename() {
+	public function testSearchFilename(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -144,7 +132,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->assertEquals('/files/test/test/path', $result[0]->href);
 	}
 
-	public function testSearchMimetype() {
+	public function testSearchMimetype(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -173,7 +161,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->assertEquals('/files/test/test/path', $result[0]->href);
 	}
 
-	public function testSearchSize() {
+	public function testSearchSize(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -202,7 +190,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->assertEquals('/files/test/test/path', $result[0]->href);
 	}
 
-	public function testSearchMtime() {
+	public function testSearchMtime(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -231,7 +219,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->assertEquals('/files/test/test/path', $result[0]->href);
 	}
 
-	public function testSearchIsCollection() {
+	public function testSearchIsCollection(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -261,7 +249,7 @@ class FileSearchBackendTest extends TestCase {
 	}
 
 
-	public function testSearchInvalidProp() {
+	public function testSearchInvalidProp(): void {
 		$this->expectException(\InvalidArgumentException::class);
 
 		$this->tree->expects($this->any())
@@ -298,7 +286,7 @@ class FileSearchBackendTest extends TestCase {
 	}
 
 
-	public function testSearchNonFolder() {
+	public function testSearchNonFolder(): void {
 		$this->expectException(\InvalidArgumentException::class);
 
 		$davNode = $this->createMock(File::class);
@@ -311,7 +299,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->search->search($query);
 	}
 
-	public function testSearchLimitOwnerBasic() {
+	public function testSearchLimitOwnerBasic(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -340,7 +328,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->assertEmpty($operator->getArguments());
 	}
 
-	public function testSearchLimitOwnerNested() {
+	public function testSearchLimitOwnerNested(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);
@@ -388,7 +376,7 @@ class FileSearchBackendTest extends TestCase {
 		$this->assertEmpty($operator->getArguments());
 	}
 
-	public function testSearchOperatorLimit() {
+	public function testSearchOperatorLimit(): void {
 		$this->tree->expects($this->any())
 			->method('getNodeForPath')
 			->willReturn($this->davFolder);

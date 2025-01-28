@@ -1,26 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Joas Schilling <coding@schilljs.com>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Repair\Owncloud;
 
@@ -79,7 +60,7 @@ class SaveAccountsTableData implements IRepairStep {
 		}
 
 		// oc_persistent_locks will be removed later on anyways so we can just drop and ignore any foreign key constraints here
-		$tableName = $this->config->getSystemValue('dbtableprefix', 'oc_') . 'persistent_locks';
+		$tableName = $this->config->getSystemValueString('dbtableprefix', 'oc_') . 'persistent_locks';
 		$schema = $this->db->createSchema();
 		$table = $schema->getTable($tableName);
 		foreach ($table->getForeignKeys() as $foreignKey) {
@@ -99,7 +80,7 @@ class SaveAccountsTableData implements IRepairStep {
 	 */
 	protected function shouldRun() {
 		$schema = $this->db->createSchema();
-		$prefix = $this->config->getSystemValue('dbtableprefix', 'oc_');
+		$prefix = $this->config->getSystemValueString('dbtableprefix', 'oc_');
 
 		$tableName = $prefix . 'accounts';
 		if (!$schema->hasTable($tableName)) {
@@ -169,7 +150,7 @@ class SaveAccountsTableData implements IRepairStep {
 	 * @throws \UnexpectedValueException
 	 */
 	protected function migrateUserInfo(IQueryBuilder $update, $userdata) {
-		$state = (int) $userdata['state'];
+		$state = (int)$userdata['state'];
 		if ($state === 3) {
 			// Deleted user, ignore
 			return;

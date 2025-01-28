@@ -1,34 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Valdnet <47037905+Valdnet@users.noreply.github.com>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\FederatedFileSharing\Tests;
 
@@ -37,6 +12,7 @@ use OCA\FederatedFileSharing\AddressHandler;
 use OCA\FederatedFileSharing\FederatedShareProvider;
 use OCA\FederatedFileSharing\Notifications;
 use OCA\FederatedFileSharing\TokenHandler;
+use OCP\Constants;
 use OCP\Contacts\IManager as IContactsManager;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Federation\ICloudFederationProviderManager;
@@ -47,12 +23,12 @@ use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IDBConnection;
 use OCP\IL10N;
-use OCP\ILogger;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
 use OCP\Share\IManager;
 use OCP\Share\IShare;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
 
 /**
  * Class FederatedShareProviderTest
@@ -61,39 +37,38 @@ use PHPUnit\Framework\MockObject\MockObject;
  * @group DB
  */
 class FederatedShareProviderTest extends \Test\TestCase {
-
 	/** @var IDBConnection */
 	protected $connection;
-	/** @var AddressHandler | \PHPUnit\Framework\MockObject\MockObject */
+	/** @var AddressHandler|MockObject */
 	protected $addressHandler;
-	/** @var Notifications | \PHPUnit\Framework\MockObject\MockObject */
+	/** @var Notifications|MockObject */
 	protected $notifications;
-	/** @var TokenHandler|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var TokenHandler|MockObject */
 	protected $tokenHandler;
 	/** @var IL10N */
 	protected $l;
-	/** @var ILogger */
+	/** @var LoggerInterface */
 	protected $logger;
-	/** @var IRootFolder | \PHPUnit\Framework\MockObject\MockObject */
+	/** @var IRootFolder|MockObject */
 	protected $rootFolder;
-	/** @var  IConfig | \PHPUnit\Framework\MockObject\MockObject */
+	/** @var IConfig|MockObject */
 	protected $config;
-	/** @var  IUserManager | \PHPUnit\Framework\MockObject\MockObject */
+	/** @var IUserManager|MockObject */
 	protected $userManager;
-	/** @var  \OCP\GlobalScale\IConfig|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var \OCP\GlobalScale\IConfig|MockObject */
 	protected $gsConfig;
 
 	/** @var IManager */
 	protected $shareManager;
 	/** @var FederatedShareProvider */
 	protected $provider;
-	/** @var IContactsManager|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var IContactsManager|MockObject */
 	protected $contactsManager;
 
-	/** @var  ICloudIdManager */
+	/** @var ICloudIdManager */
 	private $cloudIdManager;
 
-	/** @var \PHPUnit\Framework\MockObject\MockObject|ICloudFederationProviderManager */
+	/** @var MockObject|ICloudFederationProviderManager */
 	private $cloudFederationProviderManager;
 
 	protected function setUp(): void {
@@ -111,7 +86,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 			->willReturnCallback(function ($text, $parameters = []) {
 				return vsprintf($text, $parameters);
 			});
-		$this->logger = $this->getMockBuilder(ILogger::class)->getMock();
+		$this->logger = $this->getMockBuilder(LoggerInterface::class)->getMock();
 		$this->rootFolder = $this->getMockBuilder('OCP\Files\IRootFolder')->getMock();
 		$this->config = $this->getMockBuilder(IConfig::class)->getMock();
 		$this->userManager = $this->getMockBuilder(IUserManager::class)->getMock();
@@ -137,13 +112,13 @@ class FederatedShareProviderTest extends \Test\TestCase {
 			$this->notifications,
 			$this->tokenHandler,
 			$this->l,
-			$this->logger,
 			$this->rootFolder,
 			$this->config,
 			$this->userManager,
 			$this->cloudIdManager,
 			$this->gsConfig,
-			$this->cloudFederationProviderManager
+			$this->cloudFederationProviderManager,
+			$this->logger,
 		);
 
 		$this->shareManager = \OC::$server->getShareManager();
@@ -165,7 +140,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 	/**
 	 * @dataProvider dataTestCreate
 	 */
-	public function testCreate($expirationDate, $expectedDataDate) {
+	public function testCreate($expirationDate, $expectedDataDate): void {
 		$share = $this->shareManager->newShare();
 
 		/** @var File|MockObject $node */
@@ -196,9 +171,9 @@ class FederatedShareProviderTest extends \Test\TestCase {
 				$this->equalTo('myFile'),
 				$this->anything(),
 				'shareOwner',
-				'shareOwner@http://localhost/',
+				'shareOwner@http://localhost',
 				'sharedBy',
-				'sharedBy@http://localhost/'
+				'sharedBy@http://localhost'
 			)
 			->willReturn(true);
 
@@ -248,7 +223,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertEquals($expirationDate, $share->getExpirationDate());
 	}
 
-	public function testCreateCouldNotFindServer() {
+	public function testCreateCouldNotFindServer(): void {
 		$share = $this->shareManager->newShare();
 
 		$node = $this->getMockBuilder(File::class)->getMock();
@@ -277,9 +252,9 @@ class FederatedShareProviderTest extends \Test\TestCase {
 				$this->equalTo('myFile'),
 				$this->anything(),
 				'shareOwner',
-				'shareOwner@http://localhost/',
+				'shareOwner@http://localhost',
 				'sharedBy',
-				'sharedBy@http://localhost/'
+				'sharedBy@http://localhost'
 			)->willReturn(false);
 
 		$this->rootFolder->method('getById')
@@ -309,7 +284,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertFalse($data);
 	}
 
-	public function testCreateException() {
+	public function testCreateException(): void {
 		$share = $this->shareManager->newShare();
 
 		$node = $this->getMockBuilder(File::class)->getMock();
@@ -338,9 +313,9 @@ class FederatedShareProviderTest extends \Test\TestCase {
 				$this->equalTo('myFile'),
 				$this->anything(),
 				'shareOwner',
-				'shareOwner@http://localhost/',
+				'shareOwner@http://localhost',
 				'sharedBy',
-				'sharedBy@http://localhost/'
+				'sharedBy@http://localhost'
 			)->willThrowException(new \Exception('dummy'));
 
 		$this->rootFolder->method('getById')
@@ -370,7 +345,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertFalse($data);
 	}
 
-	public function testCreateShareWithSelf() {
+	public function testCreateShareWithSelf(): void {
 		$share = $this->shareManager->newShare();
 
 		$node = $this->getMockBuilder(File::class)->getMock();
@@ -398,7 +373,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 			$share = $this->provider->create($share);
 			$this->fail();
 		} catch (\Exception $e) {
-			$this->assertEquals('Not allowed to create a federated share with the same user', $e->getMessage());
+			$this->assertEquals('Not allowed to create a federated share to the same account', $e->getMessage());
 		}
 
 		$qb = $this->connection->getQueryBuilder();
@@ -413,7 +388,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertFalse($data);
 	}
 
-	public function testCreateAlreadyShared() {
+	public function testCreateAlreadyShared(): void {
 		$share = $this->shareManager->newShare();
 
 		$node = $this->getMockBuilder(File::class)->getMock();
@@ -444,9 +419,9 @@ class FederatedShareProviderTest extends \Test\TestCase {
 				$this->equalTo('myFile'),
 				$this->anything(),
 				'shareOwner',
-				'shareOwner@http://localhost/',
+				'shareOwner@http://localhost',
 				'sharedBy',
-				'sharedBy@http://localhost/'
+				'sharedBy@http://localhost'
 			)->willReturn(true);
 
 		$this->rootFolder->expects($this->never())->method($this->anything());
@@ -460,14 +435,14 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		try {
 			$this->provider->create($share);
 		} catch (\Exception $e) {
-			$this->assertEquals('Sharing myFile failed, because this item is already shared with user user@server.com', $e->getMessage());
+			$this->assertEquals('Sharing myFile failed, because this item is already shared with the account user@server.com', $e->getMessage());
 		}
 	}
 
 	/**
 	 * @dataProvider dataTestUpdate
 	 */
-	public function testUpdate($owner, $sharedBy, $expirationDate) {
+	public function testUpdate($owner, $sharedBy, $expirationDate): void {
 		$this->provider = $this->getMockBuilder('OCA\FederatedFileSharing\FederatedShareProvider')
 			->setConstructorArgs(
 				[
@@ -476,13 +451,13 @@ class FederatedShareProviderTest extends \Test\TestCase {
 					$this->notifications,
 					$this->tokenHandler,
 					$this->l,
-					$this->logger,
 					$this->rootFolder,
 					$this->config,
 					$this->userManager,
 					$this->cloudIdManager,
 					$this->gsConfig,
-					$this->cloudFederationProviderManager
+					$this->cloudFederationProviderManager,
+					$this->logger,
 				]
 			)->setMethods(['sendPermissionUpdate'])->getMock();
 
@@ -515,9 +490,9 @@ class FederatedShareProviderTest extends \Test\TestCase {
 				$this->equalTo('myFile'),
 				$this->anything(),
 				$owner,
-				$owner . '@http://localhost/',
+				$owner . '@http://localhost',
 				$sharedBy,
-				$sharedBy . '@http://localhost/'
+				$sharedBy . '@http://localhost'
 			)->willReturn(true);
 
 		if ($owner === $sharedBy) {
@@ -551,7 +526,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		];
 	}
 
-	public function testGetSharedBy() {
+	public function testGetSharedBy(): void {
 		$node = $this->getMockBuilder(File::class)->getMock();
 		$node->method('getId')->willReturn(42);
 		$node->method('getName')->willReturn('myFile');
@@ -597,7 +572,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertEquals('sharedBy', $shares[0]->getSharedBy());
 	}
 
-	public function testGetSharedByWithNode() {
+	public function testGetSharedByWithNode(): void {
 		$node = $this->getMockBuilder(File::class)->getMock();
 		$node->method('getId')->willReturn(42);
 		$node->method('getName')->willReturn('myFile');
@@ -644,7 +619,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertEquals(43, $shares[0]->getNodeId());
 	}
 
-	public function testGetSharedByWithReshares() {
+	public function testGetSharedByWithReshares(): void {
 		$node = $this->getMockBuilder(File::class)->getMock();
 		$node->method('getId')->willReturn(42);
 		$node->method('getName')->willReturn('myFile');
@@ -686,7 +661,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$this->assertCount(2, $shares);
 	}
 
-	public function testGetSharedByWithLimit() {
+	public function testGetSharedByWithLimit(): void {
 		$node = $this->getMockBuilder(File::class)->getMock();
 		$node->method('getId')->willReturn(42);
 		$node->method('getName')->willReturn('myFile');
@@ -756,7 +731,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 	 * @param string $deletedUser The user that is deleted
 	 * @param bool $rowDeleted Is the row deleted in this setup
 	 */
-	public function testDeleteUser($owner, $initiator, $recipient, $deletedUser, $rowDeleted) {
+	public function testDeleteUser($owner, $initiator, $recipient, $deletedUser, $rowDeleted): void {
 		$qb = $this->connection->getQueryBuilder();
 		$qb->insert('share')
 			->setValue('share_type', $qb->createNamedParameter(IShare::TYPE_REMOTE))
@@ -791,7 +766,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 	 * @param string $isEnabled
 	 * @param bool $expected
 	 */
-	public function testIsOutgoingServer2serverShareEnabled($internalOnly, $isEnabled, $expected) {
+	public function testIsOutgoingServer2serverShareEnabled($internalOnly, $isEnabled, $expected): void {
 		$this->gsConfig->expects($this->once())->method('onlyInternalFederation')
 			->willReturn($internalOnly);
 		$this->config->expects($this->any())->method('getAppValue')
@@ -818,7 +793,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 	 * @param string $isEnabled
 	 * @param bool $expected
 	 */
-	public function testIsIncomingServer2serverShareEnabled($onlyInternal, $isEnabled, $expected) {
+	public function testIsIncomingServer2serverShareEnabled($onlyInternal, $isEnabled, $expected): void {
 		$this->gsConfig->expects($this->once())->method('onlyInternalFederation')
 			->willReturn($onlyInternal);
 		$this->config->expects($this->any())->method('getAppValue')
@@ -845,7 +820,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 	 * @param string $isEnabled
 	 * @param bool $expected
 	 */
-	public function testIsLookupServerQueriesEnabled($gsEnabled, $isEnabled, $expected) {
+	public function testIsLookupServerQueriesEnabled($gsEnabled, $isEnabled, $expected): void {
 		$this->gsConfig->expects($this->once())->method('isGlobalScaleEnabled')
 			->willReturn($gsEnabled);
 		$this->config->expects($this->any())->method('getAppValue')
@@ -873,7 +848,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 	 * @param string $isEnabled
 	 * @param bool $expected
 	 */
-	public function testIsLookupServerUploadEnabled($gsEnabled, $isEnabled, $expected) {
+	public function testIsLookupServerUploadEnabled($gsEnabled, $isEnabled, $expected): void {
 		$this->gsConfig->expects($this->once())->method('isGlobalScaleEnabled')
 			->willReturn($gsEnabled);
 		$this->config->expects($this->any())->method('getAppValue')
@@ -894,7 +869,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		];
 	}
 
-	public function testGetSharesInFolder() {
+	public function testGetSharesInFolder(): void {
 		$userManager = \OC::$server->getUserManager();
 		$rootFolder = \OC::$server->getRootFolder();
 
@@ -921,7 +896,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$share1->setSharedWith('user@server.com')
 			->setSharedBy($u1->getUID())
 			->setShareOwner($u1->getUID())
-			->setPermissions(\OCP\Constants::PERMISSION_READ)
+			->setPermissions(Constants::PERMISSION_READ)
 			->setShareType(IShare::TYPE_REMOTE)
 			->setNode($file1);
 		$this->provider->create($share1);
@@ -930,7 +905,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$share2->setSharedWith('user@server.com')
 			->setSharedBy($u2->getUID())
 			->setShareOwner($u1->getUID())
-			->setPermissions(\OCP\Constants::PERMISSION_READ)
+			->setPermissions(Constants::PERMISSION_READ)
 			->setShareType(IShare::TYPE_REMOTE)
 			->setNode($file2);
 		$this->provider->create($share2);
@@ -948,7 +923,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$u2->delete();
 	}
 
-	public function testGetAccessList() {
+	public function testGetAccessList(): void {
 		$userManager = \OC::$server->getUserManager();
 		$rootFolder = \OC::$server->getRootFolder();
 
@@ -981,7 +956,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$share1->setSharedWith('user@server.com')
 			->setSharedBy($u1->getUID())
 			->setShareOwner($u1->getUID())
-			->setPermissions(\OCP\Constants::PERMISSION_READ)
+			->setPermissions(Constants::PERMISSION_READ)
 			->setShareType(IShare::TYPE_REMOTE)
 			->setNode($file1);
 		$this->provider->create($share1);
@@ -990,7 +965,7 @@ class FederatedShareProviderTest extends \Test\TestCase {
 		$share2->setSharedWith('foobar@localhost')
 			->setSharedBy($u1->getUID())
 			->setShareOwner($u1->getUID())
-			->setPermissions(\OCP\Constants::PERMISSION_READ)
+			->setPermissions(Constants::PERMISSION_READ)
 			->setShareType(IShare::TYPE_REMOTE)
 			->setNode($file1);
 		$this->provider->create($share2);

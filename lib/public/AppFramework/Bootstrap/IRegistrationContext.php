@@ -3,28 +3,8 @@
 declare(strict_types=1);
 
 /**
- * @copyright 2020 Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCP\AppFramework\Bootstrap;
@@ -37,8 +17,13 @@ use OCP\Collaboration\Reference\IReferenceProvider;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Template\ICustomTemplateProvider;
 use OCP\IContainer;
+use OCP\Mail\Provider\IProvider as IMailProvider;
 use OCP\Notification\INotifier;
 use OCP\Preview\IProviderV2;
+use OCP\SpeechToText\ISpeechToTextProvider;
+use OCP\TextProcessing\IProvider as ITextProcessingProvider;
+use OCP\TextToImage\IProvider as ITextToImageProvider;
+use OCP\Translation\ITranslationProvider;
 
 /**
  * The context object passed to IBootstrap::register
@@ -47,7 +32,6 @@ use OCP\Preview\IProviderV2;
  * @see IBootstrap::register()
  */
 interface IRegistrationContext {
-
 	/**
 	 * @param string $capability
 	 * @psalm-param class-string<ICapability> $capability
@@ -85,7 +69,7 @@ interface IRegistrationContext {
 	 * @param string $name
 	 * @param callable $factory
 	 * @psalm-param callable(\Psr\Container\ContainerInterface): mixed $factory
-	 * @param bool $shared
+	 * @param bool $shared If set to true the factory result will be cached otherwise every query will call the factory again
 	 *
 	 * @return void
 	 * @see IContainer::registerService()
@@ -127,7 +111,7 @@ interface IRegistrationContext {
 	 * @param string $event preferably the fully-qualified class name of the Event sub class to listen for
 	 * @psalm-param string|class-string<T> $event preferably the fully-qualified class name of the Event sub class to listen for
 	 * @param string $listener fully qualified class name (or ::class notation) of a \OCP\EventDispatcher\IEventListener that can be built by the DI container
-	 * @psalm-param class-string<\OCP\EventDispatcher\IEventListener> $listener fully qualified class name that can be built by the DI container
+	 * @psalm-param class-string<\OCP\EventDispatcher\IEventListener<T>> $listener fully qualified class name that can be built by the DI container
 	 * @param int $priority The higher this value, the earlier an event
 	 *                      listener will be triggered in the chain (defaults to 0)
 	 *
@@ -139,14 +123,16 @@ interface IRegistrationContext {
 
 	/**
 	 * @param string $class
+	 * @param bool $global load this middleware also for requests of other apps? Added in Nextcloud 26
 	 * @psalm-param class-string<\OCP\AppFramework\Middleware> $class
 	 *
 	 * @return void
 	 * @see IAppContainer::registerMiddleWare()
 	 *
 	 * @since 20.0.0
+	 * @since 26.0.0 Added optional argument $global
 	 */
-	public function registerMiddleware(string $class): void;
+	public function registerMiddleware(string $class, bool $global = false): void;
 
 	/**
 	 * Register a search provider for the unified search
@@ -207,6 +193,36 @@ interface IRegistrationContext {
 	public function registerWellKnownHandler(string $class): void;
 
 	/**
+	 * Register a custom SpeechToText provider class that can provide transcription
+	 * of audio through the OCP\SpeechToText APIs
+	 *
+	 * @param string $providerClass
+	 * @psalm-param class-string<ISpeechToTextProvider> $providerClass
+	 * @since 27.0.0
+	 */
+	public function registerSpeechToTextProvider(string $providerClass): void;
+
+	/**
+	 * Register a custom text processing provider class that provides a promptable language model
+	 * through the OCP\TextProcessing APIs
+	 *
+	 * @param string $providerClass
+	 * @psalm-param class-string<ITextProcessingProvider> $providerClass
+	 * @since 27.1.0
+	 */
+	public function registerTextProcessingProvider(string $providerClass): void;
+
+	/**
+	 * Register a custom text2image provider class that provides the possibility to generate images
+	 * through the OCP\TextToImage APIs
+	 *
+	 * @param string $providerClass
+	 * @psalm-param class-string<ITextToImageProvider> $providerClass
+	 * @since 28.0.0
+	 */
+	public function registerTextToImageProvider(string $providerClass): void;
+
+	/**
 	 * Register a custom template provider class that is able to inject custom templates
 	 * in addition to the user defined ones
 	 *
@@ -215,6 +231,16 @@ interface IRegistrationContext {
 	 * @since 21.0.0
 	 */
 	public function registerTemplateProvider(string $providerClass): void;
+
+	/**
+	 * Register a custom translation provider class that can provide translation
+	 * between languages through the OCP\Translation APIs
+	 *
+	 * @param string $providerClass
+	 * @psalm-param class-string<ITranslationProvider> $providerClass
+	 * @since 21.0.0
+	 */
+	public function registerTranslationProvider(string $providerClass): void;
 
 	/**
 	 * Register an INotifier class
@@ -307,6 +333,14 @@ interface IRegistrationContext {
 	public function registerCalendarRoomBackend(string $class): void;
 
 	/**
+	 * @param string $class
+	 * @psalm-param class-string<\OCP\Calendar\Room\IBackend> $actionClass
+	 * @return void
+	 * @since 29.0.0
+	 */
+	public function registerTeamResourceProvider(string $class): void;
+
+	/**
 	 * Register an implementation of \OCP\UserMigration\IMigrator that
 	 * will handle the implementation of a migrator
 	 *
@@ -327,4 +361,90 @@ interface IRegistrationContext {
 	 * @since 25.0.0
 	 */
 	public function registerSensitiveMethods(string $class, array $methods): void;
+
+	/**
+	 * Register an implementation of IPublicShareTemplateProvider.
+	 *
+	 * @param string $class
+	 * @psalm-param class-string<\OCP\Share\IPublicShareTemplateProvider> $class
+	 * @return void
+	 * @since 26.0.0
+	 */
+	public function registerPublicShareTemplateProvider(string $class): void;
+
+	/**
+	 * Register an implementation of \OCP\SetupCheck\ISetupCheck that
+	 * will handle the implementation of a setup check
+	 *
+	 * @param class-string<\OCP\SetupCheck\ISetupCheck> $setupCheckClass
+	 * @since 28.0.0
+	 */
+	public function registerSetupCheck(string $setupCheckClass): void;
+
+	/**
+	 * Register an implementation of \OCP\Settings\IDeclarativeSettings that
+	 * will handle the implementation of declarative settings
+	 *
+	 * @param string $declarativeSettingsClass
+	 * @psalm-param class-string<\OCP\Settings\IDeclarativeSettingsForm> $declarativeSettingsClass
+	 * @return void
+	 * @since 29.0.0
+	 */
+	public function registerDeclarativeSettings(string $declarativeSettingsClass): void;
+
+	/**
+	 * Register an implementation of \OCP\TaskProcessing\IProvider that
+	 * will handle the implementation of task processing
+	 *
+	 * @param string $taskProcessingProviderClass
+	 * @psalm-param class-string<\OCP\TaskProcessing\IProvider> $taskProcessingProviderClass
+	 * @return void
+	 * @since 30.0.0
+	 */
+	public function registerTaskProcessingProvider(string $taskProcessingProviderClass): void;
+
+	/**
+	 * Register an implementation of \OCP\TaskProcessing\ITaskType that
+	 * will handle the implementation of a task processing type
+	 *
+	 * @param string $taskProcessingTaskTypeClass
+	 * @psalm-param class-string<\OCP\TaskProcessing\ITaskType> $taskProcessingTaskTypeClass
+	 * @return void
+	 * @since 30.0.0
+	 */
+	public function registerTaskProcessingTaskType(string $taskProcessingTaskTypeClass): void;
+
+	/**
+	 * Register an implementation of \OCP\Files\Conversion\IConversionProvider
+	 * that will handle the conversion of files from one MIME type to another
+	 *
+	 * @param string $class
+	 * @psalm-param class-string<\OCP\Files\Conversion\IConversionProvider> $class
+	 *
+	 * @return void
+	 *
+	 * @since 31.0.0
+	 */
+	public function registerFileConversionProvider(string $class): void;
+
+	/**
+	 * Register a mail provider
+	 *
+	 * @param string $class
+	 * @psalm-param class-string<IMailProvider> $class
+	 * @since 30.0.0
+	 */
+	public function registerMailProvider(string $class): void;
+
+
+	/**
+	 * Register an implementation of \OCP\Config\Lexicon\IConfigLexicon that
+	 * will handle the config lexicon
+	 *
+	 * @param string $configLexiconClass
+	 *
+	 * @psalm-param class-string<\NCU\Config\Lexicon\IConfigLexicon> $configLexiconClass
+	 * @since 31.0.0
+	 */
+	public function registerConfigLexicon(string $configLexiconClass): void;
 }

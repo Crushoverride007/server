@@ -58,9 +58,7 @@ OC.L10N.register(
     "Custom mimetype" : "Персонализиран mimetype",
     "Please enter a valid time span" : "Моля, въведете валиден период от време",
     "Select a request URL" : "Избор на URL адрес за заявка",
-    "Predefined URLs" : "Предефинирани URL-и",
     "Files WebDAV" : "Файлове WebDAV",
-    "Others" : "Други",
     "Custom URL" : "Персонализиран URL адрес",
     "Select a user agent" : "Избор на потребителски агент",
     "Android client" : "Android клиент",
@@ -68,6 +66,8 @@ OC.L10N.register(
     "Desktop client" : "Клиент за настолен компютър",
     "Thunderbird & Outlook addons" : "Добавки на Thunderbird и Outlook",
     "Custom user agent" : "Персонализиран потребителски агент",
+    "Select groups" : "Избери Групи",
+    "Groups" : "Групи",
     "At least one event must be selected" : "Трябва да бъде избрано поне едно събитие",
     "Add new flow" : "Добавяне на нов поток",
     "When" : "Кога",
@@ -109,12 +109,7 @@ OC.L10N.register(
     "between" : "между",
     "not between" : "не между",
     "Request user agent" : "Потребителски агент на заявка",
-    "User group membership" : "Членство към потребителска група",
     "is member of" : "е член на",
-    "is not member of" : "не е член на",
-    "Select a tag" : "Избор на етикет",
-    "No results" : "Няма резултати",
-    "%s (invisible)" : "%s (невидим)",
-    "%s (restricted)" : "%s (ограничен)"
+    "is not member of" : "не е член на"
 },
 "nplurals=2; plural=(n != 1);");

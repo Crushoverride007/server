@@ -1,28 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Noveen Sachdeva <noveen.sachdeva@research.iiit.ac.in>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Côme Chilliet <come.chilliet@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCP\BackgroundJob;
 
@@ -32,8 +13,8 @@ namespace OCP\BackgroundJob;
  * This interface provides functions to register background jobs
  *
  * To create a new background job create a new class that inherits from either
- * \OC\BackgroundJob\Job, \OC\BackgroundJob\QueuedJob or
- * \OC\BackgroundJob\TimedJob and register it using ->add($job, $argument),
+ * \OCP\BackgroundJob\Job, \OCP\BackgroundJob\QueuedJob or
+ * \OCP\BackgroundJob\TimedJob and register it using ->add($job, $argument),
  * $argument will be passed to the run() function of the job when the job is
  * executed.
  *
@@ -52,10 +33,23 @@ interface IJobList {
 	 * Add a job to the list
 	 *
 	 * @param IJob|class-string<IJob> $job
-	 * @param mixed $argument The argument to be passed to $job->run() when the job is exectured
+	 * @param mixed $argument The argument to be passed to $job->run() when the job is executed
 	 * @since 7.0.0
 	 */
 	public function add($job, $argument = null): void;
+
+	/**
+	 * Add a job to the list but only run it after the given timestamp
+	 *
+	 * For cron background jobs this means the job will likely run shortly after the timestamp
+	 * has been reached. For ajax background jobs the job might only run when users are active
+	 * on the instance again.
+	 *
+	 * @param class-string<IJob> $job
+	 * @param mixed $argument The serializable argument to be passed to $job->run() when the job is executed
+	 * @since 28.0.0
+	 */
+	public function scheduleAfter(string $job, int $runAfter, $argument = null): void;
 
 	/**
 	 * Remove a job from the list
@@ -67,6 +61,14 @@ interface IJobList {
 	public function remove($job, $argument = null): void;
 
 	/**
+	 * Remove a job from the list by id
+	 *
+	 * @param int $id
+	 * @since 30.0.0
+	 */
+	public function removeById(int $id): void;
+
+	/**
 	 * check if a job is in the list
 	 *
 	 * @param IJob|class-string<IJob> $job
@@ -76,30 +78,33 @@ interface IJobList {
 	public function has($job, $argument): bool;
 
 	/**
-	 * get all jobs in the list
+	 * Get jobs matching the search
 	 *
-	 * @return IJob[]
-	 * @since 7.0.0
-	 * @deprecated 9.0.0 - This method is dangerous since it can cause load and
-	 * memory problems when creating too many instances. Use getJobs instead.
+	 * @param IJob|class-string<IJob>|null $job
+	 * @return array<IJob>
+	 * @since 25.0.0
+	 * @deprecated 26.0.0 Use getJobsIterator instead to avoid duplicated job objects
 	 */
-	public function getAll(): array;
+	public function getJobs($job, ?int $limit, int $offset): array;
 
 	/**
 	 * Get jobs matching the search
 	 *
 	 * @param IJob|class-string<IJob>|null $job
-	 * @return IJob[]
-	 * @since 25.0.0
+	 * @return iterable<IJob>
+	 * @since 26.0.0
 	 */
-	public function getJobs($job, ?int $limit, int $offset): array;
+	public function getJobsIterator($job, ?int $limit, int $offset): iterable;
 
 	/**
-	 * get the next job in the list
+	 * Get the next job in the list
 	 *
-	 * @since 7.0.0 - In 24.0.0 parameter $onlyTimeSensitive got added
+	 * @param bool $onlyTimeSensitive Whether we get only time sensitive jobs or not
+	 * @param class-string<IJob>[]|null $jobClasses List of job classes to restrict which next job we get
+	 * @return ?IJob the next job to run. Beware that this object may be a singleton and may be modified by the next call to buildJob.
+	 * @since 7.0.0 - In 24.0.0 parameter $onlyTimeSensitive got added; In 30.0.0 parameter $jobClasses got added
 	 */
-	public function getNext(bool $onlyTimeSensitive = false): ?IJob;
+	public function getNext(bool $onlyTimeSensitive = false, ?array $jobClasses = null): ?IJob;
 
 	/**
 	 * @since 7.0.0
@@ -145,4 +150,22 @@ interface IJobList {
 	 * @since 23.0.0
 	 */
 	public function resetBackgroundJob(IJob $job): void;
+
+	/**
+	 * Checks whether a job of the passed class was reserved to run
+	 * in the last 6h
+	 *
+	 * @param string|null $className
+	 * @return bool
+	 * @since 27.0.0
+	 */
+	public function hasReservedJob(?string $className): bool;
+
+	/**
+	 * Returns a count of jobs per Job class
+	 *
+	 * @return list<array{class:class-string, count:int}>
+	 * @since 30.0.0
+	 */
+	public function countByClass(): array;
 }

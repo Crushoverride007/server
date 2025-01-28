@@ -1,15 +1,26 @@
+/**
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 module.exports = {
 	globals: {
 		__webpack_nonce__: true,
 		_: true,
 		$: true,
-		moment: true,
-		escapeHTML: true,
-		oc_userconfig: true,
 		dayNames: true,
+		escapeHTML: true,
 		firstDay: true,
+		moment: true,
+		oc_userconfig: true,
+		sinon: true,
 	},
-	extends: ['@nextcloud'],
+	plugins: [
+		'cypress',
+	],
+	extends: [
+		'@nextcloud/eslint-config/typescript',
+		'plugin:cypress/recommended',
+	],
 	rules: {
 		'no-tabs': 'warn',
 		// TODO: make sure we fix this as this is bad vue coding style.
@@ -25,4 +36,13 @@ module.exports = {
 			mode: 'typescript',
 		},
 	},
+	overrides: [
+		// Allow any in tests
+		{
+			files: ['**/*.spec.ts'],
+			rules: {
+				'@typescript-eslint/no-explicit-any': 'warn',
+			},
+		}
+	],
 }

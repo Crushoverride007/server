@@ -1,39 +1,14 @@
 <?php
 
+/**
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+use OCP\IDateTimeFormatter;
 use OCP\Util;
 
-/**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Bernhard Posselt <dev@bernhard-posselt.com>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Michael Letzgus <www@chronos.michael-letzgus.de>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
- */
 function p($string) {
 	print(\OCP\Util::sanitizeHTML($string));
 }
@@ -47,12 +22,12 @@ function p($string) {
 function emit_css_tag($href, $opts = '') {
 	$s = '<link rel="stylesheet"';
 	if (!empty($href)) {
-		$s .= ' href="' . $href .'"';
+		$s .= ' href="' . $href . '"';
 	}
 	if (!empty($opts)) {
-		$s .= ' '.$opts;
+		$s .= ' ' . $opts;
 	}
-	print_unescaped($s.">\n");
+	print_unescaped($s . ">\n");
 }
 
 /**
@@ -72,22 +47,27 @@ function emit_css_loading_tags($obj) {
  * Prints a <script> tag with nonce and defer depending on config
  * @param string $src the source URL, ignored when empty
  * @param string $script_content the inline script content, ignored when empty
+ * @param string $content_type the type of the source (e.g. 'module')
  */
-function emit_script_tag($src, $script_content = '') {
+function emit_script_tag(string $src, string $script_content = '', string $content_type = '') {
+	$nonceManager = \OC::$server->get(\OC\Security\CSP\ContentSecurityPolicyNonceManager::class);
+
 	$defer_str = ' defer';
-	$s = '<script nonce="' . \OC::$server->getContentSecurityPolicyNonceManager()->getNonce() . '"';
+	$type = $content_type !== '' ? ' type="' . $content_type . '"' : '';
+
+	$s = '<script nonce="' . $nonceManager->getNonce() . '"';
 	if (!empty($src)) {
 		// emit script tag for deferred loading from $src
-		$s .= $defer_str.' src="' . $src .'">';
-	} elseif (!empty($script_content)) {
+		$s .= $defer_str . ' src="' . $src . '"' . $type . '>';
+	} elseif ($script_content !== '') {
 		// emit script tag for inline script from $script_content without defer (see MDN)
-		$s .= ">\n".$script_content."\n";
+		$s .= ">\n" . $script_content . "\n";
 	} else {
 		// no $src nor $src_content, really useless empty tag
 		$s .= '>';
 	}
 	$s .= '</script>';
-	print_unescaped($s."\n");
+	print_unescaped($s . "\n");
 }
 
 /**
@@ -96,7 +76,9 @@ function emit_script_tag($src, $script_content = '') {
  */
 function emit_script_loading_tags($obj) {
 	foreach ($obj['jsfiles'] as $jsfile) {
-		emit_script_tag($jsfile, '');
+		$fileName = explode('?', $jsfile, 2)[0];
+		$type = str_ends_with($fileName, '.mjs') ? 'module' : '';
+		emit_script_tag($jsfile, '', $type);
 	}
 	if (!empty($obj['inline_ocjs'])) {
 		emit_script_tag('', $obj['inline_ocjs']);
@@ -122,7 +104,7 @@ function print_unescaped($string) {
  *
  * @param string $app the appname
  * @param string|string[] $file the filename,
- * if an array is given it will add all scripts
+ *                              if an array is given it will add all scripts
  */
 function script($app, $file = null) {
 	if (is_array($file)) {
@@ -138,7 +120,7 @@ function script($app, $file = null) {
  * Shortcut for adding vendor scripts to a page
  * @param string $app the appname
  * @param string|string[] $file the filename,
- * if an array is given it will add all scripts
+ *                              if an array is given it will add all scripts
  */
 function vendor_script($app, $file = null) {
 	if (is_array($file)) {
@@ -154,7 +136,7 @@ function vendor_script($app, $file = null) {
  * Shortcut for adding styles to a page
  * @param string $app the appname
  * @param string|string[] $file the filename,
- * if an array is given it will add all styles
+ *                              if an array is given it will add all styles
  */
 function style($app, $file = null) {
 	if (is_array($file)) {
@@ -170,7 +152,7 @@ function style($app, $file = null) {
  * Shortcut for adding vendor styles to a page
  * @param string $app the appname
  * @param string|string[] $file the filename,
- * if an array is given it will add all styles
+ *                              if an array is given it will add all styles
  */
 function vendor_style($app, $file = null) {
 	if (is_array($file)) {
@@ -185,7 +167,7 @@ function vendor_style($app, $file = null) {
 /**
  * Shortcut for adding translations to a page
  * @param string $app the appname
- * if an array is given it will add all styles
+ *                    if an array is given it will add all styles
  */
 function translation($app) {
 	OC_Util::addTranslations($app);
@@ -195,7 +177,7 @@ function translation($app) {
  * Shortcut for HTML imports
  * @param string $app the appname
  * @param string|string[] $file the path relative to the app's component folder,
- * if an array is given it will add all components
+ *                              if an array is given it will add all components
  */
 function component($app, $file) {
 	if (is_array($file)) {
@@ -300,9 +282,8 @@ function strip_time($timestamp) {
  * @param bool|null $dateOnly whether to strip time information
  * @return string timestamp
  */
-function relative_modified_date($timestamp, $fromTime = null, $dateOnly = false) {
-	/** @var \OC\DateTimeFormatter $formatter */
-	$formatter = \OC::$server->query('DateTimeFormatter');
+function relative_modified_date($timestamp, $fromTime = null, $dateOnly = false): string {
+	$formatter = \OCP\Server::get(IDateTimeFormatter::class);
 
 	if ($dateOnly) {
 		return $formatter->formatDateSpan($timestamp, $fromTime);
@@ -333,7 +314,7 @@ function html_select_options($options, $selected, $params = []) {
 			$label = $label[$label_name];
 		}
 		$select = in_array($value, $selected) ? ' selected="selected"' : '';
-		$html .= '<option value="' . \OCP\Util::sanitizeHTML($value) . '"' . $select . '>' . \OCP\Util::sanitizeHTML($label) . '</option>'."\n";
+		$html .= '<option value="' . \OCP\Util::sanitizeHTML($value) . '"' . $select . '>' . \OCP\Util::sanitizeHTML($label) . '</option>' . "\n";
 	}
 	return $html;
 }

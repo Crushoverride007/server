@@ -3,7 +3,8 @@ OC.L10N.register(
     {
     "Dashboard" : "儀表板",
     "Dashboard app" : "儀表板應用程式",
-    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an\noverview of your upcoming appointments, urgent emails, chat messages,\nincoming tickets, latest tweets and much more! Users can add the widgets\nthey like and change the background to their liking." : "開始您新的一天\n\nNextcloud 儀表板是您一天的起點，為您提供\n您即將到來的約會概覽、緊急電郵、聊天訊息、\n新到的工單、最新的推文以及更多！用戶可以新增\n他們喜愛的小工具與變更他們喜愛的背景。",
+    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an overview of your upcoming appointments, urgent emails, chat messages, incoming tickets, latest tweets and much more! People can add the widgets they like and change the background to their liking." : "開始您新的一天\n\nNextcloud 儀表板是您一天的起點，為您提供您即將到來的約會概覽、緊急電郵、聊天訊息、新到的工單、最新的推文以及更多！人仕可以新增他們喜愛的小工具與變更他們喜愛的背景。",
+    "\"{title} icon\"" : "\"{title} 圖示\"",
     "Customize" : "自訂",
     "Edit widgets" : "編輯小工具",
     "Get more widgets from the App Store" : "從 App Store 取得更多小工具",
@@ -22,11 +23,7 @@ OC.L10N.register(
     "Good evening, {name}" : "晚安，{name}",
     "Hello" : "哈囉",
     "Hello, {name}" : "哈囉，{name}",
-    "Show something" : "顯示一些東西",
-    "Change background image" : "變更背景圖片",
-    "Pick from Files" : "從檔案選取",
-    "Default images" : "默認圖像",
-    "Plain background" : "簡單背景",
-    "Insert from {productName}" : "自 {productName} 插入"
+    "Happy birthday 🥳🤩🎂🎉" : "生日快樂 🥳🤩🎂🎉",
+    "Happy birthday, {name} 🥳🤩🎂🎉" : "生日快樂，{name} 🥳🤩🎂🎉"
 },
 "nplurals=1; plural=0;");

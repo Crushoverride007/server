@@ -1,30 +1,13 @@
 <!--
-  - @copyright Copyright (c) 2020 John Molakvoæ <skjnldsv@protonmail.com>
-  -
-  - @author John Molakvoæ <skjnldsv@protonmail.com>
-  -
-  - @license GNU AGPL version 3 or any later version
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU Affero General Public License as
-  - published by the Free Software Foundation, either version 3 of the
-  - License, or (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  - GNU Affero General Public License for more details.
-  -
-  - You should have received a copy of the GNU Affero General Public License
-  - along with this program. If not, see <http://www.gnu.org/licenses/>.
-  -
-  -->
+  - SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 
 <template>
 	<NcModal v-if="opened"
 		:clear-view-delay="-1"
 		class="templates-picker"
-		size="normal"
+		size="large"
 		@close="close">
 		<form class="templates-picker__form"
 			:style="style"
@@ -34,7 +17,9 @@
 			<!-- Templates list -->
 			<ul class="templates-picker__list">
 				<TemplatePreview v-bind="emptyTemplate"
+					ref="emptyTemplatePreview"
 					:checked="checked === emptyTemplate.fileid"
+					@confirm-click="onConfirmClick"
 					@check="onCheck" />
 
 				<TemplatePreview v-for="template in provider.templates"
@@ -42,14 +27,12 @@
 					v-bind="template"
 					:checked="checked === template.fileid"
 					:ratio="provider.ratio"
+					@confirm-click="onConfirmClick"
 					@check="onCheck" />
 			</ul>
 
 			<!-- Cancel and submit -->
 			<div class="templates-picker__buttons">
-				<button @click="close">
-					{{ t('files', 'Cancel') }}
-				</button>
 				<input type="submit"
 					class="primary"
 					:value="t('files', 'Create')"
@@ -63,21 +46,29 @@
 	</NcModal>
 </template>
 
-<script>
-import { normalize } from 'path'
-import { showError } from '@nextcloud/dialogs'
-import NcEmptyContent from '@nextcloud/vue/dist/Components/NcEmptyContent'
-import NcModal from '@nextcloud/vue/dist/Components/NcModal'
+<script lang="ts">
+import type { TemplateFile } from '../types.ts'
 
-import { getCurrentDirectory } from '../utils/davUtils'
-import { createFromTemplate, getTemplates } from '../services/Templates'
-import TemplatePreview from '../components/TemplatePreview'
+import { getCurrentUser } from '@nextcloud/auth'
+import { showError, spawnDialog } from '@nextcloud/dialogs'
+import { emit } from '@nextcloud/event-bus'
+import { File } from '@nextcloud/files'
+import { translate as t } from '@nextcloud/l10n'
+import { generateRemoteUrl } from '@nextcloud/router'
+import { normalize, extname, join } from 'path'
+import { defineComponent } from 'vue'
+import { createFromTemplate, getTemplates } from '../services/Templates.js'
+
+import NcEmptyContent from '@nextcloud/vue/dist/Components/NcEmptyContent.js'
+import NcModal from '@nextcloud/vue/dist/Components/NcModal.js'
+import TemplatePreview from '../components/TemplatePreview.vue'
+import TemplateFiller from '../components/TemplateFiller.vue'
+import logger from '../logger.ts'
 
 const border = 2
 const margin = 8
-const width = margin * 20
 
-export default {
+export default defineComponent({
 	name: 'TemplatePicker',
 
 	components: {
@@ -87,9 +78,12 @@ export default {
 	},
 
 	props: {
-		logger: {
+		/**
+		 * The parent folder where to create the node
+		 */
+		parent: {
 			type: Object,
-			required: true,
+			default: () => null,
 		},
 	},
 
@@ -98,44 +92,57 @@ export default {
 			// Check empty template by default
 			checked: -1,
 			loading: false,
-			name: null,
+			name: null as string|null,
 			opened: false,
-			provider: null,
+			provider: null as TemplateFile|null,
 		}
 	},
 
 	computed: {
-		/**
-		 * Strip away extension from name
-		 *
-		 * @return {string}
-		 */
+		extension() {
+			return extname(this.name ?? '')
+		},
+
 		nameWithoutExt() {
-			return this.name.indexOf('.') > -1
-				? this.name.split('.').slice(0, -1).join('.')
-				: this.name
+			// Strip extension from name if defined
+			return !this.extension
+				? this.name!
+				: this.name!.slice(0, 0 - this.extension.length)
 		},
 
 		emptyTemplate() {
 			return {
 				basename: t('files', 'Blank'),
 				fileid: -1,
-				filename: this.t('files', 'Blank'),
+				filename: t('files', 'Blank'),
 				hasPreview: false,
 				mime: this.provider?.mimetypes[0] || this.provider?.mimetypes,
 			}
 		},
 
 		selectedTemplate() {
-			return this.provider.templates.find(template => template.fileid === this.checked)
+			if (!this.provider) {
+				return null
+			}
+
+			return this.provider.templates!.find((template) => template.fileid === this.checked)
 		},
 
 		/**
-		 * Style css vars bin,d
+		 * Style css vars bind
 		 *
 		 * @return {object}
 		 */
 		style() {
+			if (!this.provider) {
+				return {}
+			}
+
+			// Fallback to 16:9 landscape ratio
+			const ratio = this.provider.ratio ? this.provider.ratio : 1.77
+			// Landscape templates should be wider than tall ones
+			// We fit 3 templates per row at max for landscape and 4 for portrait
+			const width = ratio > 1 ? margin * 30 : margin * 20
 			return {
 				'--margin': margin + 'px',
 				'--width': width + 'px',
@@ -147,14 +154,15 @@ export default {
 	},
 
 	methods: {
+		t,
+
 		/**
 		 * Open the picker
 		 *
 		 * @param {string} name the file name to create
 		 * @param {object} provider the template provider picked
 		 */
-		async open(name, provider) {
-
+		async open(name: string, provider) {
 			this.checked = this.emptyTemplate.fileid
 			this.name = name
 			this.provider = provider
@@ -174,6 +182,11 @@ export default {
 
 			// Else, open the picker
 			this.opened = true
+
+			// Set initial focus to the empty template preview
+			this.$nextTick(() => {
+				this.$refs.emptyTemplatePreview?.focus()
+			})
 		},
 
 		/**
@@ -190,60 +203,89 @@ export default {
 		/**
 		 * Manages the radio template picker change
 		 *
-		 * @param {number} fileid the selected template file id
+		 * @param fileid the selected template file id
 		 */
-		onCheck(fileid) {
+		onCheck(fileid: number) {
 			this.checked = fileid
 		},
 
-		async onSubmit() {
-			this.loading = true
-			const currentDirectory = getCurrentDirectory()
-			const fileList = OCA?.Files?.App?.currentFileList
+		onConfirmClick(fileid: number) {
+			if (fileid === this.checked) {
+				this.onSubmit()
+			}
+		},
+
+		async createFile(templateFields) {
+			const currentDirectory = new URL(window.location.href).searchParams.get('dir') || '/'
 
 			// If the file doesn't have an extension, add the default one
 			if (this.nameWithoutExt === this.name) {
-				this.logger.debug('Fixed invalid filename', { name: this.name, extension: this.provider?.extension })
-				this.name = this.name + this.provider?.extension
+				logger.warn('Fixed invalid filename', { name: this.name, extension: this.provider?.extension })
+				this.name = `${this.name}${this.provider?.extension ?? ''}`
 			}
 
 			try {
 				const fileInfo = await createFromTemplate(
 					normalize(`${currentDirectory}/${this.name}`),
-					this.selectedTemplate?.filename,
-					this.selectedTemplate?.templateType,
+					this.selectedTemplate?.filename as string ?? '',
+					this.selectedTemplate?.templateType as string ?? '',
+					templateFields,
 				)
-				this.logger.debug('Created new file', fileInfo)
+				logger.debug('Created new file', fileInfo)
 
-				// Fetch FileInfo and model
-				const data = await fileList?.addAndFetchFileInfo(this.name).then((status, data) => data)
-				const model = new OCA.Files.FileInfoModel(data, {
-					filesClient: fileList?.filesClient,
+				const owner = getCurrentUser()?.uid || null
+				const node = new File({
+					id: fileInfo.fileid,
+					source: generateRemoteUrl(join(`dav/files/${owner}`, fileInfo.filename)),
+					root: `/files/${owner}`,
+					mime: fileInfo.mime,
+					mtime: new Date(fileInfo.lastmod * 1000),
+					owner,
+					size: fileInfo.size,
+					permissions: fileInfo.permissions,
+					attributes: {
+						// Inherit some attributes from parent folder like the mount type and real owner
+						'mount-type': this.parent?.attributes?.['mount-type'],
+						'owner-id': this.parent?.attributes?.['owner-id'],
+						'owner-display-name': this.parent?.attributes?.['owner-display-name'],
+						...fileInfo,
+						'has-preview': fileInfo.hasPreview,
+					},
 				})
 
-				// Run default action
-				const fileAction = OCA.Files.fileActions.getDefaultFileAction(fileInfo.mime, 'file', OC.PERMISSION_ALL)
-				if (fileAction) {
-					fileAction.action(fileInfo.basename, {
-						$file: fileList?.findFileEl(this.name),
-						dir: currentDirectory,
-						fileList,
-						fileActions: fileList?.fileActions,
-						fileInfoModel: model,
-					})
-				}
+				// Update files list
+				emit('files:node:created', node)
 
+				// Open the new file
+				window.OCP.Files.Router.goToRoute(
+					null, // use default route
+					{ view: 'files', fileid: node.fileid },
+					{ dir: node.dirname, openfile: 'true' },
+				)
+
+				// Close the picker
 				this.close()
 			} catch (error) {
-				this.logger.error('Error while creating the new file from template')
-				console.error(error)
-				showError(this.t('files', 'Unable to create new file from template'))
+				logger.error('Error while creating the new file from template', { error })
+				showError(t('files', 'Unable to create new file from template'))
 			} finally {
 				this.loading = false
 			}
 		},
+
+		async onSubmit() {
+			if (this.selectedTemplate?.fields?.length > 0) {
+				spawnDialog(TemplateFiller, {
+					fields: this.selectedTemplate.fields,
+					onSubmit: this.createFile,
+				})
+			} else {
+				this.loading = true
+				await this.createFile()
+			}
+		},
 	},
-}
+})
 </script>
 
 <style lang="scss" scoped>
@@ -275,11 +317,11 @@ export default {
 
 	&__buttons {
 		display: flex;
-		justify-content: space-between;
+		justify-content: end;
 		padding: calc(var(--margin) * 2) var(--margin);
 		position: sticky;
 		bottom: 0;
-		background-image: linear-gradient(0, var(--gradient-main-background));
+		background-image: linear-gradient(0deg, var(--gradient-main-background));
 
 		button, input[type='submit'] {
 			height: 44px;
@@ -287,14 +329,14 @@ export default {
 	}
 
 	// Make sure we're relative for the loading emptycontent on top
-	::v-deep .modal-container {
+	:deep(.modal-container) {
 		position: relative;
 	}
 
 	&__loading {
 		position: absolute;
 		top: 0;
-		left: 0;
+		inset-inline-start: 0;
 		justify-content: center;
 		width: 100%;
 		height: 100%;

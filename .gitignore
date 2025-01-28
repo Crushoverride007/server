@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+# SPDX-FileCopyrightText: 2011-2016 ownCloud contributors
+# SPDX-FileCopyrightText: 2010 ownCloud contributors
+# SPDX-License-Identifier: AGPL-3.0-only
 # the default generated dir + db file
 /data
 /config/config.php
@@ -24,12 +28,14 @@
 !/apps/sharebymail
 !/apps/encryption
 !/apps/files_external
+!/apps/files_reminders
 !/apps/files_sharing
 !/apps/files_trashbin
 !/apps/files_versions
 !/apps/lookup_server_connector
 !/apps/user_ldap
 !/apps/oauth2
+!/apps/profile
 !/apps/provisioning_api
 !/apps/settings
 !/apps/systemtags
@@ -40,6 +46,7 @@
 !/apps/twofactor_backupcodes
 !/apps/user_status
 !/apps/weather_status
+!/apps/webhook_listeners
 !/apps/workflowengine
 /apps/files_external/3rdparty/irodsphp/PHPUnitTest
 /apps/files_external/3rdparty/irodsphp/web
@@ -56,6 +63,9 @@
 /themes/*
 !/themes/example
 !/themes/README
+
+# Love to people that develop the updater
+/updater
 
 # just sane ignores
 .*.sw[po]
@@ -96,6 +106,7 @@ nbproject
 
 # vscode
 .vscode
+*.code-workspace
 
 # geany
 *.geany
@@ -127,6 +138,8 @@ nbproject
 /build/bin
 /build/lib/
 /build/jsdocs/
+/build/integration/output/
+/build/integration/phpserver.log
 /npm-debug.log
 /PhantomJS_*
 
@@ -139,6 +152,7 @@ Vagrantfile
 
 # Tests - auto-generated files
 /data-autotest
+/results.sarif
 /tests/.phpunit.result.cache
 /tests/coverage*
 /tests/css
@@ -153,13 +167,20 @@ Vagrantfile
 /config/config-autotest-backup.php
 /config/autoconfig.php
 clover.xml
+/coverage
 
 # Tests - dependencies
 tests/acceptance/vendor/
 
 composer.phar
 /lib/composer/bin
+/lib/composer/bamarni
 /vendor-bin/**/vendor
 
 ./.htaccess
 core/js/mimetypelist.js
+
+# Tests - cypress
+cypress/downloads
+cypress/snapshots
+cypress/videos

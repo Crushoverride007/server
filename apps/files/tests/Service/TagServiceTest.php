@@ -1,38 +1,19 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Files\Tests\Service;
 
 use OCA\Files\Service\TagService;
 use OCP\Activity\IManager;
+use OCP\Files\Folder;
+use OCP\Files\NotFoundException;
 use OCP\ITags;
 use OCP\IUser;
 use OCP\IUserSession;
-use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Class TagServiceTest
@@ -55,20 +36,17 @@ class TagServiceTest extends \Test\TestCase {
 	private $activityManager;
 
 	/**
-	 * @var \OCP\Files\Folder
+	 * @var Folder
 	 */
 	private $root;
 
-	/** @var EventDispatcherInterface|\PHPUnit\Framework\MockObject\MockObject */
-	private $dispatcher;
-
 	/**
-	 * @var \OCA\Files\Service\TagService|\PHPUnit\Framework\MockObject\MockObject
+	 * @var TagService|\PHPUnit\Framework\MockObject\MockObject
 	 */
 	private $tagService;
 
 	/**
-	 * @var \OCP\ITags
+	 * @var ITags
 	 */
 	private $tagger;
 
@@ -81,7 +59,7 @@ class TagServiceTest extends \Test\TestCase {
 		\OC_Util::setupFS($this->user);
 		$user = $this->createMock(IUser::class);
 		/**
-		 * @var \OCP\IUserSession
+		 * @var IUserSession
 		 */
 		$this->userSession = $this->createMock(IUserSession::class);
 		$this->userSession->expects($this->any())
@@ -90,7 +68,6 @@ class TagServiceTest extends \Test\TestCase {
 			->willReturn($user);
 
 		$this->root = \OC::$server->getUserFolder();
-		$this->dispatcher = $this->createMock(EventDispatcherInterface::class);
 
 		$this->tagger = \OC::$server->getTagManager()->load('files');
 		$this->tagService = $this->getTagService(['addActivity']);
@@ -107,7 +84,6 @@ class TagServiceTest extends \Test\TestCase {
 				$this->activityManager,
 				$this->tagger,
 				$this->root,
-				$this->dispatcher,
 			])
 			->setMethods($methods)
 			->getMock();
@@ -121,12 +97,9 @@ class TagServiceTest extends \Test\TestCase {
 		}
 	}
 
-	public function testUpdateFileTags() {
+	public function testUpdateFileTags(): void {
 		$tag1 = 'tag1';
 		$tag2 = 'tag2';
-
-		$this->tagService->expects($this->never())
-			->method('addActivity');
 
 		$subdir = $this->root->newFolder('subdir');
 		$testFile = $subdir->newFile('test.txt');
@@ -154,31 +127,10 @@ class TagServiceTest extends \Test\TestCase {
 		$caught = false;
 		try {
 			$this->tagService->updateFileTags('subdir/unexist.txt', [$tag1]);
-		} catch (\OCP\Files\NotFoundException $e) {
+		} catch (NotFoundException $e) {
 			$caught = true;
 		}
 		$this->assertTrue($caught);
-
-		$subdir->delete();
-	}
-
-	public function testFavoriteActivity() {
-		$subdir = $this->root->newFolder('subdir');
-		$file = $subdir->newFile('test.txt');
-
-		$this->tagService->expects($this->exactly(2))
-			->method('addActivity')
-			->withConsecutive(
-				[true, $file->getId(), 'subdir/test.txt'],
-				[false, $file->getId(), 'subdir/test.txt']
-			);
-
-		// set tags
-		$this->tagService->updateFileTags('subdir/test.txt', [ITags::TAG_FAVORITE]);
-
-		// remove tag
-		$this->tagService->updateFileTags('subdir/test.txt', []);
-
 
 		$subdir->delete();
 	}

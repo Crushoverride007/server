@@ -1,36 +1,20 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Jagszent <daniel@jagszent.de>
- * @author Michael Gapczynski <GapczynskiM@gmail.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Cache;
 
+use Doctrine\DBAL\Exception\DeadlockException;
 use OC\Files\FileInfo;
+use OC\Files\ObjectStore\ObjectStoreStorage;
+use OCP\Files\Cache\ICache;
 use OCP\Files\Cache\ICacheEntry;
 use OCP\Files\Cache\IUpdater;
 use OCP\Files\Storage\IStorage;
+use Psr\Log\LoggerInterface;
 
 /**
  * Update the cache and propagate changes
@@ -62,6 +46,8 @@ class Updater implements IUpdater {
 	 */
 	protected $cache;
 
+	private LoggerInterface $logger;
+
 	/**
 	 * @param \OC\Files\Storage\Storage $storage
 	 */
@@ -70,6 +56,7 @@ class Updater implements IUpdater {
 		$this->propagator = $storage->getPropagator();
 		$this->scanner = $storage->getScanner();
 		$this->cache = $storage->getCache();
+		$this->logger = \OC::$server->get(LoggerInterface::class);
 	}
 
 	/**
@@ -114,7 +101,7 @@ class Updater implements IUpdater {
 	 * @param string $path
 	 * @param int $time
 	 */
-	public function update($path, $time = null) {
+	public function update($path, $time = null, ?int $sizeDifference = null) {
 		if (!$this->enabled or Scanner::isPartialFile($path)) {
 			return;
 		}
@@ -123,20 +110,22 @@ class Updater implements IUpdater {
 		}
 
 		$data = $this->scanner->scan($path, Scanner::SCAN_SHALLOW, -1, false);
-		if (
-			isset($data['oldSize']) && isset($data['size']) &&
-			!$data['encrypted'] // encryption is a pita and touches the cache itself
-		) {
+
+		if (isset($data['oldSize']) && isset($data['size'])) {
 			$sizeDifference = $data['size'] - $data['oldSize'];
-		} else {
-			// scanner didn't provide size info, fallback to full size calculation
-			$sizeDifference = 0;
-			if ($this->cache instanceof Cache) {
-				$this->cache->correctFolderSize($path, $data);
-			}
+		}
+
+		// encryption is a pita and touches the cache itself
+		if (isset($data['encrypted']) && (bool)$data['encrypted']) {
+			$sizeDifference = null;
+		}
+
+		// scanner didn't provide size info, fallback to full size calculation
+		if ($this->cache instanceof Cache && $sizeDifference === null) {
+			$this->cache->correctFolderSize($path, $data);
 		}
 		$this->correctParentStorageMtime($path);
-		$this->propagator->propagateChange($path, $time, $sizeDifference);
+		$this->propagator->propagateChange($path, $time, $sizeDifference ?? 0);
 	}
 
 	/**
@@ -170,13 +159,51 @@ class Updater implements IUpdater {
 	}
 
 	/**
-	 * Rename a file or folder in the cache and update the size, etag and mtime of the parent folders
+	 * Rename a file or folder in the cache.
 	 *
 	 * @param IStorage $sourceStorage
 	 * @param string $source
 	 * @param string $target
 	 */
 	public function renameFromStorage(IStorage $sourceStorage, $source, $target) {
+		$this->copyOrRenameFromStorage($sourceStorage, $source, $target, function (ICache $sourceCache) use ($sourceStorage, $source, $target) {
+			// Remove existing cache entry to no reuse the fileId.
+			if ($this->cache->inCache($target)) {
+				$this->cache->remove($target);
+			}
+
+			if ($sourceStorage === $this->storage) {
+				$this->cache->move($source, $target);
+			} else {
+				$this->cache->moveFromCache($sourceCache, $source, $target);
+			}
+		});
+	}
+
+	/**
+	 * Copy a file or folder in the cache.
+	 */
+	public function copyFromStorage(IStorage $sourceStorage, string $source, string $target): void {
+		$this->copyOrRenameFromStorage($sourceStorage, $source, $target, function (ICache $sourceCache, ICacheEntry $sourceInfo) use ($target) {
+			$parent = dirname($target);
+			if ($parent === '.') {
+				$parent = '';
+			}
+			$parentInCache = $this->cache->inCache($parent);
+			if (!$parentInCache) {
+				$parentData = $this->scanner->scan($parent, Scanner::SCAN_SHALLOW, -1, false);
+				$parentInCache = $parentData !== null;
+			}
+			if ($parentInCache) {
+				$this->cache->copyFromCache($sourceCache, $sourceInfo, $target);
+			}
+		});
+	}
+
+	/**
+	 * Utility to copy or rename a file or folder in the cache and update the size, etag and mtime of the parent folders
+	 */
+	private function copyOrRenameFromStorage(IStorage $sourceStorage, string $source, string $target, callable $operation): void {
 		if (!$this->enabled or Scanner::isPartialFile($source) or Scanner::isPartialFile($target)) {
 			return;
 		}
@@ -189,27 +216,25 @@ class Updater implements IUpdater {
 
 		$sourceInfo = $sourceCache->get($source);
 
+		$sourceExtension = pathinfo($source, PATHINFO_EXTENSION);
+		$targetExtension = pathinfo($target, PATHINFO_EXTENSION);
+		$targetIsTrash = preg_match("/^d\d+$/", $targetExtension);
+
 		if ($sourceInfo !== false) {
-			if ($this->cache->inCache($target)) {
-				$this->cache->remove($target);
+			if (!$this->storage->instanceOfStorage(ObjectStoreStorage::class)) {
+				$operation($sourceCache, $sourceInfo);
 			}
 
-			if ($sourceStorage === $this->storage) {
-				$this->cache->move($source, $target);
-			} else {
-				$this->cache->moveFromCache($sourceCache, $source, $target);
-			}
+			$isDir = $sourceInfo->getMimeType() === FileInfo::MIMETYPE_FOLDER;
+		} else {
+			$isDir = $this->storage->is_dir($target);
+		}
 
-			$sourceExtension = pathinfo($source, PATHINFO_EXTENSION);
-			$targetExtension = pathinfo($target, PATHINFO_EXTENSION);
-			$targetIsTrash = preg_match("/d\d+/", $targetExtension);
-
-			if ($sourceExtension !== $targetExtension && $sourceInfo->getMimeType() !== FileInfo::MIMETYPE_FOLDER && !$targetIsTrash) {
-				// handle mime type change
-				$mimeType = $this->storage->getMimeType($target);
-				$fileId = $this->cache->getId($target);
-				$this->cache->update($fileId, ['mimetype' => $mimeType]);
-			}
+		if ($sourceExtension !== $targetExtension && !$isDir && !$targetIsTrash) {
+			// handle mime type change
+			$mimeType = $this->storage->getMimeType($target);
+			$fileId = $this->cache->getId($target);
+			$this->cache->update($fileId, ['mimetype' => $mimeType]);
 		}
 
 		if ($sourceCache instanceof Cache) {
@@ -253,7 +278,14 @@ class Updater implements IUpdater {
 		if ($parentId != -1) {
 			$mtime = $this->storage->filemtime($parent);
 			if ($mtime !== false) {
-				$this->cache->update($parentId, ['storage_mtime' => $mtime]);
+				try {
+					$this->cache->update($parentId, ['storage_mtime' => $mtime]);
+				} catch (DeadlockException $e) {
+					// ignore the failure.
+					// with failures concurrent updates, someone else would have already done it.
+					// in the worst case the `storage_mtime` isn't updated, which should at most only trigger an extra rescan
+					$this->logger->warning('Error while updating parent storage_mtime, should be safe to ignore', ['exception' => $e]);
+				}
 			}
 		}
 	}

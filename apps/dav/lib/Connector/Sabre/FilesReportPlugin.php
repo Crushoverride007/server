@@ -1,35 +1,18 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- * @author Vinicius Cubas Brand <vinicius@eita.org.br>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Connector\Sabre;
 
 use OC\Files\View;
+use OCA\Circles\Api\v1\Circles;
 use OCP\App\IAppManager;
+use OCP\AppFramework\Http;
 use OCP\Files\Folder;
+use OCP\Files\Node as INode;
 use OCP\IGroupManager;
 use OCP\ITagManager;
 use OCP\IUserSession;
@@ -45,9 +28,9 @@ use Sabre\DAV\Xml\Element\Response;
 use Sabre\DAV\Xml\Response\MultiStatus;
 
 class FilesReportPlugin extends ServerPlugin {
-
 	// namespace
 	public const NS_OWNCLOUD = 'http://owncloud.org/ns';
+	public const NS_NEXTCLOUD = 'http://nextcloud.org/ns';
 	public const REPORT_NAME = '{http://owncloud.org/ns}filter-files';
 	public const SYSTEMTAG_PROPERTYNAME = '{http://owncloud.org/ns}systemtag';
 	public const CIRCLE_PROPERTYNAME = '{http://owncloud.org/ns}circle';
@@ -60,55 +43,8 @@ class FilesReportPlugin extends ServerPlugin {
 	private $server;
 
 	/**
-	 * @var Tree
-	 */
-	private $tree;
-
-	/**
-	 * @var View
-	 */
-	private $fileView;
-
-	/**
-	 * @var ISystemTagManager
-	 */
-	private $tagManager;
-
-	/**
-	 * @var ISystemTagObjectMapper
-	 */
-	private $tagMapper;
-
-	/**
-	 * Manager for private tags
-	 *
-	 * @var ITagManager
-	 */
-	private $fileTagger;
-
-	/**
-	 * @var IUserSession
-	 */
-	private $userSession;
-
-	/**
-	 * @var IGroupManager
-	 */
-	private $groupManager;
-
-	/**
-	 * @var Folder
-	 */
-	private $userFolder;
-
-	/**
-	 * @var IAppManager
-	 */
-	private $appManager;
-
-	/**
 	 * @param Tree $tree
-	 * @param View $view
+	 * @param View $fileView
 	 * @param ISystemTagManager $tagManager
 	 * @param ISystemTagObjectMapper $tagMapper
 	 * @param ITagManager $fileTagger manager for private tags
@@ -117,25 +53,20 @@ class FilesReportPlugin extends ServerPlugin {
 	 * @param Folder $userFolder
 	 * @param IAppManager $appManager
 	 */
-	public function __construct(Tree $tree,
-								View $view,
-								ISystemTagManager $tagManager,
-								ISystemTagObjectMapper $tagMapper,
-								ITagManager $fileTagger,
-								IUserSession $userSession,
-								IGroupManager $groupManager,
-								Folder $userFolder,
-								IAppManager $appManager
+	public function __construct(
+		private Tree $tree,
+		private View $fileView,
+		private ISystemTagManager $tagManager,
+		private ISystemTagObjectMapper $tagMapper,
+		/**
+		 * Manager for private tags
+		 */
+		private ITagManager $fileTagger,
+		private IUserSession $userSession,
+		private IGroupManager $groupManager,
+		private Folder $userFolder,
+		private IAppManager $appManager,
 	) {
-		$this->tree = $tree;
-		$this->fileView = $view;
-		$this->tagManager = $tagManager;
-		$this->tagMapper = $tagMapper;
-		$this->fileTagger = $fileTagger;
-		$this->userSession = $userSession;
-		$this->groupManager = $groupManager;
-		$this->userFolder = $userFolder;
-		$this->appManager = $appManager;
 	}
 
 	/**
@@ -186,6 +117,7 @@ class FilesReportPlugin extends ServerPlugin {
 		}
 
 		$ns = '{' . $this::NS_OWNCLOUD . '}';
+		$ncns = '{' . $this::NS_NEXTCLOUD . '}';
 		$requestedProps = [];
 		$filterRules = [];
 
@@ -199,6 +131,14 @@ class FilesReportPlugin extends ServerPlugin {
 				foreach ($reportProps['value'] as $propVal) {
 					$requestedProps[] = $propVal['name'];
 				}
+			} elseif ($name === '{DAV:}limit') {
+				foreach ($reportProps['value'] as $propVal) {
+					if ($propVal['name'] === '{DAV:}nresults') {
+						$limit = (int)$propVal['value'];
+					} elseif ($propVal['name'] === $ncns . 'firstresult') {
+						$offset = (int)$propVal['value'];
+					}
+				}
 			}
 		}
 
@@ -209,13 +149,32 @@ class FilesReportPlugin extends ServerPlugin {
 
 		// gather all file ids matching filter
 		try {
-			$resultFileIds = $this->processFilterRules($filterRules);
+			$resultFileIds = $this->processFilterRulesForFileIDs($filterRules);
+			// no logic in circles and favorites for paging, we always have all results, and slice later on
+			$resultFileIds = array_slice($resultFileIds, $offset ?? 0, $limit ?? null);
+			// fetching nodes has paging on DB level – therefore we cannot mix and slice the results, similar
+			// to user backends. I.e. the final result may return more results than requested.
+			$resultNodes = $this->processFilterRulesForFileNodes($filterRules, $limit ?? null, $offset ?? null);
 		} catch (TagNotFoundException $e) {
 			throw new PreconditionFailed('Cannot filter by non-existing tag', 0, $e);
 		}
 
+		$results = [];
+		foreach ($resultNodes as $entry) {
+			if ($entry) {
+				$results[] = $this->wrapNode($entry);
+			}
+		}
+
 		// find sabre nodes by file id, restricted to the root node path
-		$results = $this->findNodesByFileIds($reportTargetNode, $resultFileIds);
+		$additionalNodes = $this->findNodesByFileIds($reportTargetNode, $resultFileIds);
+		if ($additionalNodes && $results) {
+			$results = array_uintersect($results, $additionalNodes, function (Node $a, Node $b): int {
+				return $a->getId() - $b->getId();
+			});
+		} elseif (!$results && $additionalNodes) {
+			$results = $additionalNodes;
+		}
 
 		$filesUri = $this->getFilesBaseUri($uri, $reportTargetNode->getPath());
 		$responses = $this->prepareResponses($filesUri, $requestedProps, $results);
@@ -225,7 +184,7 @@ class FilesReportPlugin extends ServerPlugin {
 			new MultiStatus($responses)
 		);
 
-		$this->server->httpResponse->setStatus(207);
+		$this->server->httpResponse->setStatus(Http::STATUS_MULTI_STATUS);
 		$this->server->httpResponse->setHeader('Content-Type', 'application/xml; charset=utf-8');
 		$this->server->httpResponse->setBody($xml);
 
@@ -261,19 +220,13 @@ class FilesReportPlugin extends ServerPlugin {
 	 *
 	 * @param array $filterRules
 	 * @return array array of unique file id results
-	 *
-	 * @throws TagNotFoundException whenever a tag was not found
 	 */
-	protected function processFilterRules($filterRules) {
+	protected function processFilterRulesForFileIDs(array $filterRules): array {
 		$ns = '{' . $this::NS_OWNCLOUD . '}';
-		$resultFileIds = null;
-		$systemTagIds = [];
+		$resultFileIds = [];
 		$circlesIds = [];
 		$favoriteFilter = null;
 		foreach ($filterRules as $filterRule) {
-			if ($filterRule['name'] === $ns . 'systemtag') {
-				$systemTagIds[] = $filterRule['value'];
-			}
 			if ($filterRule['name'] === self::CIRCLE_PROPERTYNAME) {
 				$circlesIds[] = $filterRule['value'];
 			}
@@ -289,15 +242,6 @@ class FilesReportPlugin extends ServerPlugin {
 			}
 		}
 
-		if (!empty($systemTagIds)) {
-			$fileIds = $this->getSystemTagFileIds($systemTagIds);
-			if (empty($resultFileIds)) {
-				$resultFileIds = $fileIds;
-			} else {
-				$resultFileIds = array_intersect($fileIds, $resultFileIds);
-			}
-		}
-
 		if (!empty($circlesIds)) {
 			$fileIds = $this->getCirclesFileIds($circlesIds);
 			if (empty($resultFileIds)) {
@@ -310,47 +254,46 @@ class FilesReportPlugin extends ServerPlugin {
 		return $resultFileIds;
 	}
 
-	private function getSystemTagFileIds($systemTagIds) {
-		$resultFileIds = null;
+	protected function processFilterRulesForFileNodes(array $filterRules, ?int $limit, ?int $offset): array {
+		$systemTagIds = [];
+		foreach ($filterRules as $filterRule) {
+			if ($filterRule['name'] === self::SYSTEMTAG_PROPERTYNAME) {
+				$systemTagIds[] = $filterRule['value'];
+			}
+		}
 
-		// check user permissions, if applicable
-		if (!$this->isAdmin()) {
-			// check visibility/permission
-			$tags = $this->tagManager->getTagsByIds($systemTagIds);
-			$unknownTagIds = [];
+		$nodes = [];
+
+		if (!empty($systemTagIds)) {
+			$tags = $this->tagManager->getTagsByIds($systemTagIds, $this->userSession->getUser());
+
+			// For we run DB queries per tag and require intersection, we cannot apply limit and offset for DB queries on multi tag search.
+			$oneTagSearch = count($tags) === 1;
+			$dbLimit = $oneTagSearch ? $limit ?? 0 : 0;
+			$dbOffset = $oneTagSearch ? $offset ?? 0 : 0;
+
 			foreach ($tags as $tag) {
-				if (!$tag->isUserVisible()) {
-					$unknownTagIds[] = $tag->getId();
+				$tagName = $tag->getName();
+				$tmpNodes = $this->userFolder->searchBySystemTag($tagName, $this->userSession->getUser()->getUID(), $dbLimit, $dbOffset);
+				if (count($nodes) === 0) {
+					$nodes = $tmpNodes;
+				} else {
+					$nodes = array_uintersect($nodes, $tmpNodes, function (INode $a, INode $b): int {
+						return $a->getId() - $b->getId();
+					});
+				}
+				if ($nodes === []) {
+					// there cannot be a common match when nodes are empty early.
+					return $nodes;
 				}
 			}
 
-			if (!empty($unknownTagIds)) {
-				throw new TagNotFoundException('Tag with ids ' . implode(', ', $unknownTagIds) . ' not found');
+			if (!$oneTagSearch && ($limit !== null || $offset !== null)) {
+				$nodes = array_slice($nodes, $offset, $limit);
 			}
 		}
 
-		// fetch all file ids and intersect them
-		foreach ($systemTagIds as $systemTagId) {
-			$fileIds = $this->tagMapper->getObjectIdsForTags($systemTagId, 'files');
-
-			if (empty($fileIds)) {
-				// This tag has no files, nothing can ever show up
-				return [];
-			}
-
-			// first run ?
-			if ($resultFileIds === null) {
-				$resultFileIds = $fileIds;
-			} else {
-				$resultFileIds = array_intersect($resultFileIds, $fileIds);
-			}
-
-			if (empty($resultFileIds)) {
-				// Empty intersection, nothing can show up anymore
-				return [];
-			}
-		}
-		return $resultFileIds;
+		return $nodes;
 	}
 
 	/**
@@ -362,7 +305,7 @@ class FilesReportPlugin extends ServerPlugin {
 		if (!$this->appManager->isEnabledForUser('circles') || !class_exists('\OCA\Circles\Api\v1\Circles')) {
 			return [];
 		}
-		return \OCA\Circles\Api\v1\Circles::getFilesForCircles($circlesIds);
+		return Circles::getFilesForCircles($circlesIds);
 	}
 
 
@@ -370,7 +313,7 @@ class FilesReportPlugin extends ServerPlugin {
 	 * Prepare propfind response for the given nodes
 	 *
 	 * @param string $filesUri $filesUri URI leading to root of the files URI,
-	 * with a leading slash but no trailing slash
+	 *                         with a leading slash but no trailing slash
 	 * @param string[] $requestedProps requested properties
 	 * @param Node[] nodes nodes for which to fetch and prepare responses
 	 * @return Response[]
@@ -393,7 +336,6 @@ class FilesReportPlugin extends ServerPlugin {
 			$responses[] = new Response(
 				rtrim($this->server->getBaseUri(), '/') . $filesUri . $node->getPath(),
 				$result,
-				200
 			);
 		}
 		return $responses;
@@ -406,26 +348,33 @@ class FilesReportPlugin extends ServerPlugin {
 	 * @param array $fileIds file ids
 	 * @return Node[] array of Sabre nodes
 	 */
-	public function findNodesByFileIds($rootNode, $fileIds) {
+	public function findNodesByFileIds(Node $rootNode, array $fileIds): array {
+		if (empty($fileIds)) {
+			return [];
+		}
 		$folder = $this->userFolder;
 		if (trim($rootNode->getPath(), '/') !== '') {
+			/** @var Folder $folder */
 			$folder = $folder->get($rootNode->getPath());
 		}
 
 		$results = [];
 		foreach ($fileIds as $fileId) {
-			$entry = $folder->getById($fileId);
+			$entry = $folder->getFirstNodeById((int)$fileId);
 			if ($entry) {
-				$entry = current($entry);
-				if ($entry instanceof \OCP\Files\File) {
-					$results[] = new File($this->fileView, $entry);
-				} elseif ($entry instanceof \OCP\Files\Folder) {
-					$results[] = new Directory($this->fileView, $entry);
-				}
+				$results[] = $this->wrapNode($entry);
 			}
 		}
 
 		return $results;
+	}
+
+	protected function wrapNode(INode $node): File|Directory {
+		if ($node instanceof \OCP\Files\File) {
+			return new File($this->fileView, $node);
+		} else {
+			return new Directory($this->fileView, $node);
+		}
 	}
 
 	/**

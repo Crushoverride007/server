@@ -1,31 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Template;
 
@@ -46,11 +24,14 @@ class Base {
 	 * @param string $template
 	 * @param string $requestToken
 	 * @param \OCP\IL10N $l10n
+	 * @param string $cspNonce
 	 * @param Defaults $theme
 	 */
-	public function __construct($template, $requestToken, $l10n, $theme) {
-		$this->vars = [];
-		$this->vars['requesttoken'] = $requestToken;
+	public function __construct($template, $requestToken, $l10n, $theme, $cspNonce) {
+		$this->vars = [
+			'cspNonce' => $cspNonce,
+			'requesttoken' => $requestToken,
+		];
 		$this->l10n = $l10n;
 		$this->template = $template;
 		$this->theme = $theme;
@@ -65,15 +46,15 @@ class Base {
 	 */
 	protected function getAppTemplateDirs($theme, $app, $serverRoot, $app_dir) {
 		// Check if the app is in the app folder or in the root
-		if ($app_dir !== false && file_exists($app_dir.'/templates/')) {
+		if ($app_dir !== false && file_exists($app_dir . '/templates/')) {
 			return [
-				$serverRoot.'/themes/'.$theme.'/apps/'.$app.'/templates/',
-				$app_dir.'/templates/',
+				$serverRoot . '/themes/' . $theme . '/apps/' . $app . '/templates/',
+				$app_dir . '/templates/',
 			];
 		}
 		return [
-			$serverRoot.'/themes/'.$theme.'/'.$app.'/templates/',
-			$serverRoot.'/'.$app.'/templates/',
+			$serverRoot . '/themes/' . $theme . '/' . $app . '/templates/',
+			$serverRoot . '/' . $app . '/templates/',
 		];
 	}
 
@@ -84,8 +65,8 @@ class Base {
 	 */
 	protected function getCoreTemplateDirs($theme, $serverRoot) {
 		return [
-			$serverRoot.'/themes/'.$theme.'/core/templates/',
-			$serverRoot.'/core/templates/',
+			$serverRoot . '/themes/' . $theme . '/core/templates/',
+			$serverRoot . '/core/templates/',
 		];
 	}
 

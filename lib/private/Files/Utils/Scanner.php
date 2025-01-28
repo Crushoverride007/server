@@ -1,37 +1,16 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Blaok <i@blaok.me>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Olivier Paroz <github@oparoz.com>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Utils;
 
 use OC\Files\Cache\Cache;
 use OC\Files\Filesystem;
 use OC\Files\Storage\FailedStorage;
+use OC\Files\Storage\Home;
 use OC\ForbiddenException;
 use OC\Hooks\PublicEmitter;
 use OC\Lock\DBLockingProvider;
@@ -39,15 +18,17 @@ use OCA\Files_Sharing\SharedStorage;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Events\BeforeFileScannedEvent;
 use OCP\Files\Events\BeforeFolderScannedEvent;
-use OCP\Files\Events\NodeAddedToCache;
 use OCP\Files\Events\FileCacheUpdated;
-use OCP\Files\Events\NodeRemovedFromCache;
 use OCP\Files\Events\FileScannedEvent;
 use OCP\Files\Events\FolderScannedEvent;
+use OCP\Files\Events\NodeAddedToCache;
+use OCP\Files\Events\NodeRemovedFromCache;
+use OCP\Files\Mount\IMountPoint;
 use OCP\Files\NotFoundException;
 use OCP\Files\Storage\IStorage;
 use OCP\Files\StorageNotAvailableException;
 use OCP\IDBConnection;
+use OCP\Lock\ILockingProvider;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -98,14 +79,14 @@ class Scanner extends PublicEmitter {
 		$this->dispatcher = $dispatcher;
 		$this->logger = $logger;
 		// when DB locking is used, no DB transactions will be used
-		$this->useTransaction = !(\OC::$server->getLockingProvider() instanceof DBLockingProvider);
+		$this->useTransaction = !(\OC::$server->get(ILockingProvider::class) instanceof DBLockingProvider);
 	}
 
 	/**
 	 * get all storages for $dir
 	 *
 	 * @param string $dir
-	 * @return \OC\Files\Mount\MountPoint[]
+	 * @return array<string, IMountPoint>
 	 */
 	protected function getMounts($dir) {
 		//TODO: move to the node based fileapi once that's done
@@ -116,8 +97,9 @@ class Scanner extends PublicEmitter {
 		$mounts = $mountManager->findIn($dir);
 		$mounts[] = $mountManager->find($dir);
 		$mounts = array_reverse($mounts); //start with the mount of $dir
+		$mountPoints = array_map(fn ($mount) => $mount->getMountPoint(), $mounts);
 
-		return $mounts;
+		return array_combine($mountPoints, $mounts);
 	}
 
 	/**
@@ -126,6 +108,7 @@ class Scanner extends PublicEmitter {
 	 * @param \OC\Files\Mount\MountPoint $mount
 	 */
 	protected function attachListener($mount) {
+		/** @var \OC\Files\Cache\Scanner $scanner */
 		$scanner = $mount->getStorage()->getScanner();
 		$scanner->listen('\OC\Files\Cache\Scanner', 'scanFile', function ($path) use ($mount) {
 			$this->emit('\OC\Files\Utils\Scanner', 'scanFile', [$mount->getMountPoint() . $path]);
@@ -154,33 +137,38 @@ class Scanner extends PublicEmitter {
 	public function backgroundScan($dir) {
 		$mounts = $this->getMounts($dir);
 		foreach ($mounts as $mount) {
-			$storage = $mount->getStorage();
-			if (is_null($storage)) {
-				continue;
+			try {
+				$storage = $mount->getStorage();
+				if (is_null($storage)) {
+					continue;
+				}
+
+				// don't bother scanning failed storages (shortcut for same result)
+				if ($storage->instanceOfStorage(FailedStorage::class)) {
+					continue;
+				}
+
+				/** @var \OC\Files\Cache\Scanner $scanner */
+				$scanner = $storage->getScanner();
+				$this->attachListener($mount);
+
+				$scanner->listen('\OC\Files\Cache\Scanner', 'removeFromCache', function ($path) use ($storage) {
+					$this->triggerPropagator($storage, $path);
+				});
+				$scanner->listen('\OC\Files\Cache\Scanner', 'updateCache', function ($path) use ($storage) {
+					$this->triggerPropagator($storage, $path);
+				});
+				$scanner->listen('\OC\Files\Cache\Scanner', 'addToCache', function ($path) use ($storage) {
+					$this->triggerPropagator($storage, $path);
+				});
+
+				$propagator = $storage->getPropagator();
+				$propagator->beginBatch();
+				$scanner->backgroundScan();
+				$propagator->commitBatch();
+			} catch (\Exception $e) {
+				$this->logger->error("Error while trying to scan mount as {$mount->getMountPoint()}:" . $e->getMessage(), ['exception' => $e, 'app' => 'files']);
 			}
-
-			// don't bother scanning failed storages (shortcut for same result)
-			if ($storage->instanceOfStorage(FailedStorage::class)) {
-				continue;
-			}
-
-			$scanner = $storage->getScanner();
-			$this->attachListener($mount);
-
-			$scanner->listen('\OC\Files\Cache\Scanner', 'removeFromCache', function ($path) use ($storage) {
-				$this->triggerPropagator($storage, $path);
-			});
-			$scanner->listen('\OC\Files\Cache\Scanner', 'updateCache', function ($path) use ($storage) {
-				$this->triggerPropagator($storage, $path);
-			});
-			$scanner->listen('\OC\Files\Cache\Scanner', 'addToCache', function ($path) use ($storage) {
-				$this->triggerPropagator($storage, $path);
-			});
-
-			$propagator = $storage->getPropagator();
-			$propagator->beginBatch();
-			$scanner->backgroundScan();
-			$propagator->commitBatch();
 		}
 	}
 
@@ -191,7 +179,7 @@ class Scanner extends PublicEmitter {
 	 * @throws ForbiddenException
 	 * @throws NotFoundException
 	 */
-	public function scan($dir = '', $recursive = \OC\Files\Cache\Scanner::SCAN_RECURSIVE, callable $mountFilter = null) {
+	public function scan($dir = '', $recursive = \OC\Files\Cache\Scanner::SCAN_RECURSIVE, ?callable $mountFilter = null) {
 		if (!Filesystem::isValidPath($dir)) {
 			throw new \InvalidArgumentException('Invalid path to scan');
 		}
@@ -211,13 +199,27 @@ class Scanner extends PublicEmitter {
 			}
 
 			// if the home storage isn't writable then the scanner is run as the wrong user
-			if ($storage->instanceOfStorage('\OC\Files\Storage\Home') and
-				(!$storage->isCreatable('') or !$storage->isCreatable('files'))
-			) {
-				if ($storage->is_dir('files')) {
-					throw new ForbiddenException();
-				} else {// if the root exists in neither the cache nor the storage the user isn't setup yet
-					break;
+			if ($storage->instanceOfStorage(Home::class)) {
+				/** @var Home $storage */
+				foreach (['', 'files'] as $path) {
+					if (!$storage->isCreatable($path)) {
+						$fullPath = $storage->getSourcePath($path);
+						if (!$storage->is_dir($path) && $storage->getCache()->inCache($path)) {
+							throw new NotFoundException("User folder $fullPath exists in cache but not on disk");
+						} elseif ($storage->is_dir($path)) {
+							$ownerUid = fileowner($fullPath);
+							$owner = posix_getpwuid($ownerUid);
+							$owner = $owner['name'] ?? $ownerUid;
+							$permissions = decoct(fileperms($fullPath));
+							throw new ForbiddenException("User folder $fullPath is not writable, folders is owned by $owner and has mode $permissions");
+						} elseif (isset($mounts[$mount->getMountPoint() . $path . '/'])) {
+							// /<user>/files is overwritten by a mountpoint, so this check is irrelevant
+							break;
+						} else {
+							// if the root exists in neither the cache nor the storage the user isn't setup yet
+							break 2;
+						}
+					}
 				}
 			}
 
@@ -226,6 +228,7 @@ class Scanner extends PublicEmitter {
 				continue;
 			}
 			$relativePath = $mount->getInternalPath($dir);
+			/** @var \OC\Files\Cache\Scanner $scanner */
 			$scanner = $storage->getScanner();
 			$scanner->setUseTransactions(false);
 			$this->attachListener($mount);
@@ -238,9 +241,13 @@ class Scanner extends PublicEmitter {
 				$this->postProcessEntry($storage, $path);
 				$this->dispatcher->dispatchTyped(new FileCacheUpdated($storage, $path));
 			});
-			$scanner->listen('\OC\Files\Cache\Scanner', 'addToCache', function ($path) use ($storage) {
+			$scanner->listen('\OC\Files\Cache\Scanner', 'addToCache', function ($path, $storageId, $data, $fileId) use ($storage) {
 				$this->postProcessEntry($storage, $path);
-				$this->dispatcher->dispatchTyped(new NodeAddedToCache($storage, $path));
+				if ($fileId) {
+					$this->dispatcher->dispatchTyped(new FileCacheUpdated($storage, $path));
+				} else {
+					$this->dispatcher->dispatchTyped(new NodeAddedToCache($storage, $path));
+				}
 			});
 
 			if (!$storage->file_exists($relativePath)) {

@@ -3,29 +3,8 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2018 Julius Härtl <jus@bitgrid.net>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCP\Accounts;
@@ -39,7 +18,6 @@ use OCP\IUser;
  *
  */
 interface IAccountManager {
-
 	/**
 	 * Contact details visible locally only
 	 *
@@ -72,6 +50,7 @@ interface IAccountManager {
 	/**
 	 * Contact details only visible locally
 	 *
+	 * @since 15.0.0
 	 * @deprecated 21.0.1
 	 */
 	public const VISIBILITY_PRIVATE = 'private';
@@ -79,6 +58,7 @@ interface IAccountManager {
 	/**
 	 * Contact details visible on trusted federated servers.
 	 *
+	 * @since 15.0.0
 	 * @deprecated 21.0.1
 	 */
 	public const VISIBILITY_CONTACTS_ONLY = 'contacts';
@@ -86,6 +66,7 @@ interface IAccountManager {
 	/**
 	 * Contact details visible on trusted federated servers and in the public lookup server.
 	 *
+	 * @since 15.0.0
 	 * @deprecated 21.0.1
 	 */
 	public const VISIBILITY_PUBLIC = 'public';
@@ -105,13 +86,50 @@ interface IAccountManager {
 		self::VISIBILITY_PUBLIC,
 	];
 
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_AVATAR = 'avatar';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_DISPLAYNAME = 'displayname';
+
+	/**
+	 * @since 27.0.0
+	 */
+	public const PROPERTY_DISPLAYNAME_LEGACY = 'display-name';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_PHONE = 'phone';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_EMAIL = 'email';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_WEBSITE = 'website';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_ADDRESS = 'address';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const PROPERTY_TWITTER = 'twitter';
+
+	/**
+	 * @since 26.0.0
+	 */
+	public const PROPERTY_FEDIVERSE = 'fediverse';
 
 	/**
 	 * @since 23.0.0
@@ -139,29 +157,57 @@ interface IAccountManager {
 	public const PROPERTY_PROFILE_ENABLED = 'profile_enabled';
 
 	/**
+	 * @since 30.0.0
+	 */
+	public const PROPERTY_BIRTHDATE = 'birthdate';
+
+	/**
+	 * @since 31.0.0
+	 */
+	public const PROPERTY_PRONOUNS = 'pronouns';
+
+	/**
 	 * The list of allowed properties
 	 *
 	 * @since 25.0.0
 	 */
 	public const ALLOWED_PROPERTIES = [
-		self::PROPERTY_AVATAR,
-		self::PROPERTY_DISPLAYNAME,
-		self::PROPERTY_PHONE,
-		self::PROPERTY_EMAIL,
-		self::PROPERTY_WEBSITE,
 		self::PROPERTY_ADDRESS,
-		self::PROPERTY_TWITTER,
-		self::PROPERTY_ORGANISATION,
-		self::PROPERTY_ROLE,
-		self::PROPERTY_HEADLINE,
+		self::PROPERTY_AVATAR,
 		self::PROPERTY_BIOGRAPHY,
+		self::PROPERTY_BIRTHDATE,
+		self::PROPERTY_DISPLAYNAME,
+		self::PROPERTY_EMAIL,
+		self::PROPERTY_FEDIVERSE,
+		self::PROPERTY_HEADLINE,
+		self::PROPERTY_ORGANISATION,
+		self::PROPERTY_PHONE,
 		self::PROPERTY_PROFILE_ENABLED,
+		self::PROPERTY_PRONOUNS,
+		self::PROPERTY_ROLE,
+		self::PROPERTY_TWITTER,
+		self::PROPERTY_WEBSITE,
 	];
 
+
+	/**
+	 * @since 22.0.0
+	 */
 	public const COLLECTION_EMAIL = 'additional_mail';
 
+	/**
+	 * @since 15.0.0
+	 */
 	public const NOT_VERIFIED = '0';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const VERIFICATION_IN_PROGRESS = '1';
+
+	/**
+	 * @since 15.0.0
+	 */
 	public const VERIFIED = '2';
 
 	/**
@@ -188,9 +234,9 @@ interface IAccountManager {
 	 * Search for users based on account data
 	 *
 	 * @param string $property - property or property collection name – since
-	 * NC 22 the implementation MAY add a fitting property collection into the
-	 * search even if a property name was given e.g. email property and email
-	 * collection)
+	 *                         NC 22 the implementation MAY add a fitting property collection into the
+	 *                         search even if a property name was given e.g. email property and email
+	 *                         collection)
 	 * @param string[] $values
 	 * @return array
 	 *

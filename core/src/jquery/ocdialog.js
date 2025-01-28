@@ -1,30 +1,11 @@
 /**
- * @copyright 2018 Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Gary Kim <gary@garykim.dev>
- * @author Joas Schilling <coding@schilljs.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- *
- * @license AGPL-3.0-or-later
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 import $ from 'jquery'
-import { isA11yActivation } from '../Util/a11y'
+import { createFocusTrap } from 'focus-trap'
+import { isA11yActivation } from '../Util/a11y.js'
 
 $.widget('oc.ocdialog', {
 	options: {
@@ -52,6 +33,7 @@ $.widget('oc.ocdialog', {
 				// Setting tabIndex makes the div focusable
 				tabIndex: -1,
 				role: 'dialog',
+				'aria-modal': true,
 			})
 			.insertBefore(this.element)
 		this.$dialog.append(this.element.detach())
@@ -114,9 +96,9 @@ $.widget('oc.ocdialog', {
 
 		this._setOptions(this.options)
 		this._createOverlay()
+		this._useFocusTrap()
 	},
 	_init() {
-		this.$dialog.focus()
 		this._trigger('open')
 	},
 	_setOption(key, value) {
@@ -177,7 +159,8 @@ $.widget('oc.ocdialog', {
 			break
 		case 'closeButton':
 			if (value) {
-				const $closeButton = $('<a class="oc-dialog-close" tabindex="0"></a>')
+				const $closeButton = $('<button class="oc-dialog-close"></button>')
+				$closeButton.attr('aria-label', t('core', 'Close "{dialogTitle}" dialog', { dialogTitle: this.$title || this.options.title }))
 				this.$dialog.prepend($closeButton)
 				$closeButton.on('click keydown', function(event) {
 					if (isA11yActivation(event)) {
@@ -231,7 +214,7 @@ $.widget('oc.ocdialog', {
 		}
 		this.overlay = $('<div>')
 			.addClass('oc-dialog-dim')
-			.appendTo(contentDiv)
+			.insertBefore(this.$dialog)
 		this.overlay.on('click keydown keyup', function(event) {
 			if (event.target !== self.$dialog.get(0) && self.$dialog.find($(event.target)).length === 0) {
 				event.preventDefault()
@@ -251,6 +234,23 @@ $.widget('oc.ocdialog', {
 			this.overlay = null
 		}
 	},
+	_useFocusTrap() {
+		// Create global stack if undefined
+		Object.assign(window, { _nc_focus_trap: window._nc_focus_trap || [] })
+
+		const dialogElement = this.$dialog[0]
+		this.focusTrap = createFocusTrap(dialogElement, {
+			allowOutsideClick: true,
+			trapStack: window._nc_focus_trap,
+			fallbackFocus: dialogElement,
+		})
+
+		this.focusTrap.activate()
+	},
+	_clearFocusTrap() {
+		this.focusTrap?.deactivate()
+		this.focusTrap = null
+	},
 	widget() {
 		return this.$dialog
 	},
@@ -261,6 +261,7 @@ $.widget('oc.ocdialog', {
 		this.enterCallback = null
 	},
 	close() {
+		this._clearFocusTrap()
 		this._destroyOverlay()
 		const self = this
 		// Ugly hack to catch remaining keyup events.

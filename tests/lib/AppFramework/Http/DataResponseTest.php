@@ -1,24 +1,9 @@
 <?php
 
 /**
- * ownCloud - App Framework
- *
- * @author Bernhard Posselt
- * @copyright 2014 Bernhard Posselt <dev@bernhard-posselt.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\AppFramework\Http;
@@ -28,7 +13,6 @@ use OCP\AppFramework\Http\DataResponse;
 use OCP\IRequest;
 
 class DataResponseTest extends \Test\TestCase {
-
 	/**
 	 * @var DataResponse
 	 */
@@ -40,7 +24,7 @@ class DataResponseTest extends \Test\TestCase {
 	}
 
 
-	public function testSetData() {
+	public function testSetData(): void {
 		$params = ['hi', 'yo'];
 		$this->response->setData($params);
 
@@ -48,7 +32,7 @@ class DataResponseTest extends \Test\TestCase {
 	}
 
 
-	public function testConstructorAllowsToSetData() {
+	public function testConstructorAllowsToSetData(): void {
 		$data = ['hi'];
 		$code = 300;
 		$response = new DataResponse($data, $code);
@@ -58,7 +42,7 @@ class DataResponseTest extends \Test\TestCase {
 	}
 
 
-	public function testConstructorAllowsToSetHeaders() {
+	public function testConstructorAllowsToSetHeaders(): void {
 		$data = ['hi'];
 		$code = 300;
 		$headers = ['test' => 'something'];
@@ -68,7 +52,7 @@ class DataResponseTest extends \Test\TestCase {
 			'Cache-Control' => 'no-cache, no-store, must-revalidate',
 			'Content-Security-Policy' => "default-src 'none';base-uri 'none';manifest-src 'self';frame-ancestors 'none'",
 			'Feature-Policy' => "autoplay 'none';camera 'none';fullscreen 'none';geolocation 'none';microphone 'none';payment 'none'",
-			'X-Robots-Tag' => 'none',
+			'X-Robots-Tag' => 'noindex, nofollow',
 			'X-Request-Id' => \OC::$server->get(IRequest::class)->getId(),
 		];
 		$expectedHeaders = array_merge($expectedHeaders, $headers);
@@ -79,7 +63,7 @@ class DataResponseTest extends \Test\TestCase {
 	}
 
 
-	public function testChainability() {
+	public function testChainability(): void {
 		$params = ['hi', 'yo'];
 		$this->response->setData($params)
 			->setStatus(Http::STATUS_NOT_FOUND);

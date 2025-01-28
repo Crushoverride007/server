@@ -1,25 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2018 Arthur Schiwon <blizzz@arthur-schiwon.de>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Core\Controller;
 
@@ -28,6 +10,8 @@ use OC\Security\IdentityProof\Manager;
 use OC\Updater\ChangesCheck;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\ApiRoute;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Defaults;
 use OCP\IConfig;
@@ -35,47 +19,39 @@ use OCP\IRequest;
 use OCP\IUserManager;
 use OCP\IUserSession;
 use OCP\L10N\IFactory;
+use OCP\ServerVersion;
 
 class WhatsNewController extends OCSController {
-
-	/** @var IConfig */
-	protected $config;
-	/** @var IUserSession */
-	private $userSession;
-	/** @var ChangesCheck */
-	private $whatsNewService;
-	/** @var IFactory */
-	private $langFactory;
-	/** @var Defaults */
-	private $defaults;
-
 	public function __construct(
 		string $appName,
 		IRequest $request,
 		CapabilitiesManager $capabilitiesManager,
-		IUserSession $userSession,
+		private IUserSession $userSession,
 		IUserManager $userManager,
 		Manager $keyManager,
-		IConfig $config,
-		ChangesCheck $whatsNewService,
-		IFactory $langFactory,
-		Defaults $defaults
+		ServerVersion $serverVersion,
+		private IConfig $config,
+		private ChangesCheck $whatsNewService,
+		private IFactory $langFactory,
+		private Defaults $defaults,
 	) {
-		parent::__construct($appName, $request, $capabilitiesManager, $userSession, $userManager, $keyManager);
-		$this->config = $config;
-		$this->userSession = $userSession;
-		$this->whatsNewService = $whatsNewService;
-		$this->langFactory = $langFactory;
-		$this->defaults = $defaults;
+		parent::__construct($appName, $request, $capabilitiesManager, $userSession, $userManager, $keyManager, $serverVersion);
 	}
 
 	/**
-	 * @NoAdminRequired
+	 * Get the changes
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{changelogURL: string, product: string, version: string, whatsNew?: array{regular: list<string>, admin: list<string>}}, array{}>|DataResponse<Http::STATUS_NO_CONTENT, list<empty>, array{}>
+	 *
+	 * 200: Changes returned
+	 * 204: No changes
 	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'GET', url: '/whatsnew', root: '/core')]
 	public function get():DataResponse {
 		$user = $this->userSession->getUser();
 		if ($user === null) {
-			throw new \RuntimeException("Acting user cannot be resolved");
+			throw new \RuntimeException('Acting user cannot be resolved');
 		}
 		$lastRead = $this->config->getUserValue($user->getUID(), 'core', 'whatsNewLastRead', 0);
 		$currentVersion = $this->whatsNewService->normalizeVersion($this->config->getSystemValue('version'));
@@ -107,15 +83,22 @@ class WhatsNewController extends OCSController {
 	}
 
 	/**
-	 * @NoAdminRequired
+	 * Dismiss the changes
 	 *
+	 * @param string $version Version to dismiss the changes for
+	 *
+	 * @return DataResponse<Http::STATUS_OK, list<empty>, array{}>
 	 * @throws \OCP\PreConditionNotMetException
 	 * @throws DoesNotExistException
+	 *
+	 * 200: Changes dismissed
 	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'POST', url: '/whatsnew', root: '/core')]
 	public function dismiss(string $version):DataResponse {
 		$user = $this->userSession->getUser();
 		if ($user === null) {
-			throw new \RuntimeException("Acting user cannot be resolved");
+			throw new \RuntimeException('Acting user cannot be resolved');
 		}
 		$version = $this->whatsNewService->normalizeVersion($version);
 		// checks whether it's a valid version, throws an Exception otherwise

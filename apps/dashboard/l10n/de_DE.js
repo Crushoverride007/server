@@ -3,7 +3,8 @@ OC.L10N.register(
     {
     "Dashboard" : "Dashboard",
     "Dashboard app" : "Dashboard-App",
-    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an\noverview of your upcoming appointments, urgent emails, chat messages,\nincoming tickets, latest tweets and much more! Users can add the widgets\nthey like and change the background to their liking." : "Starten Sie informiert in den Tag\n\nDas Nextcloud-Dashboard ist Ihr Ausgangspunkt für den Tag und gibt Ihnen\neinen Überblick über Ihre anstehenden Termine, dringende E-Mails, Chatnachrichten,\neingehende Tickets, neuste Tweets und vieles mehr! Benutzer können die Widgets hinzufügen\ndie sie mögen und der Hintergrund kann nach Ihren Wünschen angepasst.",
+    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an overview of your upcoming appointments, urgent emails, chat messages, incoming tickets, latest tweets and much more! People can add the widgets they like and change the background to their liking." : "Starten Sie informiert in den Tag\n\nDas Nextcloud Dashboard ist Ihr Ausgangspunkt für den Tag und gibt Ihnen einen Überblick über Ihre anstehenden Termine, dringende E-Mails, Chatnachrichten, eingehende Tickets, neueste Tweets und vieles mehr! Benutzer können die gewünschten Widgets hinzufügen und den Hintergrund nach Belieben ändern.",
+    "\"{title} icon\"" : "\"{title}-Symbol\"",
     "Customize" : "Anpassen",
     "Edit widgets" : "Widgets bearbeiten",
     "Get more widgets from the App Store" : "Holen Sie sich weitere Widgets aus dem App-Store",
@@ -22,11 +23,7 @@ OC.L10N.register(
     "Good evening, {name}" : "Guten Abend {name}",
     "Hello" : "Hallo",
     "Hello, {name}" : "Hallo, {name}",
-    "Show something" : "Etwas anzeigen",
-    "Change background image" : "Hintergrundbild ändern",
-    "Pick from Files" : "Aus Dateien auswählen",
-    "Default images" : "Standardbild",
-    "Plain background" : "Einfacher Hintergrund",
-    "Insert from {productName}" : "Von {productName} einfügen"
+    "Happy birthday 🥳🤩🎂🎉" : "Alles Gute zum Geburtstag 🥳🤩🎂🎉",
+    "Happy birthday, {name} 🥳🤩🎂🎉" : "Alles Gute zum Geburtstag, {name} 🥳🤩🎂🎉"
 },
 "nplurals=2; plural=(n != 1);");

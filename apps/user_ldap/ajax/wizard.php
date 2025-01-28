@@ -1,79 +1,45 @@
 <?php
+
+use OCA\User_LDAP\AccessFactory;
+use OCA\User_LDAP\Configuration;
+use OCA\User_LDAP\LDAP;
+use OCA\User_LDAP\Wizard;
+use OCP\Util;
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Juan Pablo Villafáñez <jvillafanez@solidgear.es>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Roger Szabo <roger.szabo@web.de>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 // Check user and app status
 \OC_JSON::checkAdminUser();
 \OC_JSON::checkAppEnabled('user_ldap');
 \OC_JSON::callCheck();
 
-$l = \OC::$server->getL10N('user_ldap');
+$l = Util::getL10N('user_ldap');
 
 if (!isset($_POST['action'])) {
 	\OC_JSON::error(['message' => $l->t('No action specified')]);
 }
 $action = (string)$_POST['action'];
 
-
 if (!isset($_POST['ldap_serverconfig_chooser'])) {
 	\OC_JSON::error(['message' => $l->t('No configuration specified')]);
 }
 $prefix = (string)$_POST['ldap_serverconfig_chooser'];
 
-$ldapWrapper = new \OCA\User_LDAP\LDAP();
-$configuration = new \OCA\User_LDAP\Configuration($prefix);
+$ldapWrapper = new LDAP();
+$configuration = new Configuration($prefix);
 
 $con = new \OCA\User_LDAP\Connection($ldapWrapper, $prefix, null);
 $con->setConfiguration($configuration->getConfiguration());
-$con->ldapConfigurationActive = true;
+$con->ldapConfigurationActive = (string)true;
 $con->setIgnoreValidation(true);
 
-$userManager = new \OCA\User_LDAP\User\Manager(
-	\OC::$server->getConfig(),
-	new \OCA\User_LDAP\FilesystemHelper(),
-	\OC::$server->get(\Psr\Log\LoggerInterface::class),
-	\OC::$server->getAvatarManager(),
-	new \OCP\Image(),
-	\OC::$server->getUserManager(),
-	\OC::$server->getNotificationManager(),
-	\OC::$server->get(\OCP\Share\IManager::class)
-);
+$factory = \OC::$server->get(AccessFactory::class);
+$access = $factory->get($con);
 
-$access = new \OCA\User_LDAP\Access(
-	$con,
-	$ldapWrapper,
-	$userManager,
-	new \OCA\User_LDAP\Helper(\OC::$server->getConfig(), \OC::$server->getDatabaseConnection()),
-	\OC::$server->getConfig(),
-	\OC::$server->getUserManager(),
-	\OC::$server->get(\Psr\Log\LoggerInterface::class)
-);
-
-$wizard = new \OCA\User_LDAP\Wizard($configuration, $ldapWrapper, $access);
+$wizard = new Wizard($configuration, $ldapWrapper, $access);
 
 switch ($action) {
 	case 'guessPortAndTLS':
@@ -124,17 +90,21 @@ switch ($action) {
 	}
 
 	case 'save':
-		$key = isset($_POST['cfgkey']) ? $_POST['cfgkey'] : false;
-		$val = isset($_POST['cfgval']) ? $_POST['cfgval'] : null;
+		$key = $_POST['cfgkey'] ?? false;
+		$val = $_POST['cfgval'] ?? null;
 		if ($key === false || is_null($val)) {
 			\OC_JSON::error(['message' => $l->t('No data specified')]);
+			exit;
+		}
+		if (is_array($key)) {
+			\OC_JSON::error(['message' => $l->t('Invalid data specified')]);
 			exit;
 		}
 		$cfg = [$key => $val];
 		$setParameters = [];
 		$configuration->setConfiguration($cfg, $setParameters);
 		if (!in_array($key, $setParameters)) {
-			\OC_JSON::error(['message' => $l->t($key.
+			\OC_JSON::error(['message' => $l->t($key .
 				' Could not set configuration %s', $setParameters[0])]);
 			exit;
 		}

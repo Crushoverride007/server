@@ -1,36 +1,21 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\User_LDAP\Jobs;
 
-use OC\BackgroundJob\TimedJob;
 use OCA\User_LDAP\Helper;
 use OCA\User_LDAP\Mapping\UserMapping;
 use OCA\User_LDAP\User\DeletedUsersIndex;
-use OCA\User_LDAP\User_LDAP;
 use OCA\User_LDAP\User_Proxy;
+use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\BackgroundJob\TimedJob;
+use OCP\IConfig;
+use OCP\IDBConnection;
+use OCP\Server;
 
 /**
  * Class CleanUp
@@ -44,15 +29,12 @@ class CleanUp extends TimedJob {
 	protected $limit;
 
 	/** @var int $defaultIntervalMin default interval in minutes */
-	protected $defaultIntervalMin = 51;
+	protected $defaultIntervalMin = 60;
 
-	/** @var User_LDAP|User_Proxy $userBackend */
-	protected $userBackend;
-
-	/** @var \OCP\IConfig $ocConfig */
+	/** @var IConfig $ocConfig */
 	protected $ocConfig;
 
-	/** @var \OCP\IDBConnection $db */
+	/** @var IDBConnection $db */
 	protected $db;
 
 	/** @var Helper $ldapHelper */
@@ -61,15 +43,15 @@ class CleanUp extends TimedJob {
 	/** @var UserMapping */
 	protected $mapping;
 
-	/** @var DeletedUsersIndex */
-	protected $dui;
-
-	public function __construct(User_Proxy $userBackend, DeletedUsersIndex $dui) {
+	public function __construct(
+		ITimeFactory $timeFactory,
+		protected User_Proxy $userBackend,
+		protected DeletedUsersIndex $dui,
+	) {
+		parent::__construct($timeFactory);
 		$minutes = \OC::$server->getConfig()->getSystemValue(
 			'ldapUserCleanupInterval', (string)$this->defaultIntervalMin);
 		$this->setInterval((int)$minutes * 60);
-		$this->userBackend = $userBackend;
-		$this->dui = $dui;
 	}
 
 	/**
@@ -107,7 +89,7 @@ class CleanUp extends TimedJob {
 		if (isset($arguments['mapping'])) {
 			$this->mapping = $arguments['mapping'];
 		} else {
-			$this->mapping = \OCP\Server::get(UserMapping::class);
+			$this->mapping = Server::get(UserMapping::class);
 		}
 
 		if (isset($arguments['deletedUsersIndex'])) {

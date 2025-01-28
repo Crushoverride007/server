@@ -9,7 +9,7 @@ return array(
     'Composer\\InstalledVersions' => $vendorDir . '/composer/InstalledVersions.php',
     'OCA\\Provisioning_API\\AppInfo\\Application' => $baseDir . '/../lib/AppInfo/Application.php',
     'OCA\\Provisioning_API\\Capabilities' => $baseDir . '/../lib/Capabilities.php',
-    'OCA\\Provisioning_API\\Controller\\AUserData' => $baseDir . '/../lib/Controller/AUserData.php',
+    'OCA\\Provisioning_API\\Controller\\AUserDataOCSController' => $baseDir . '/../lib/Controller/AUserDataOCSController.php',
     'OCA\\Provisioning_API\\Controller\\AppConfigController' => $baseDir . '/../lib/Controller/AppConfigController.php',
     'OCA\\Provisioning_API\\Controller\\AppsController' => $baseDir . '/../lib/Controller/AppsController.php',
     'OCA\\Provisioning_API\\Controller\\GroupsController' => $baseDir . '/../lib/Controller/GroupsController.php',
@@ -20,4 +20,5 @@ return array(
     'OCA\\Provisioning_API\\Listener\\UserDeletedListener' => $baseDir . '/../lib/Listener/UserDeletedListener.php',
     'OCA\\Provisioning_API\\Middleware\\Exceptions\\NotSubAdminException' => $baseDir . '/../lib/Middleware/Exceptions/NotSubAdminException.php',
     'OCA\\Provisioning_API\\Middleware\\ProvisioningApiMiddleware' => $baseDir . '/../lib/Middleware/ProvisioningApiMiddleware.php',
+    'OCA\\Provisioning_API\\ResponseDefinitions' => $baseDir . '/../lib/ResponseDefinitions.php',
 );

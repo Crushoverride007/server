@@ -1,49 +1,24 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Damjan Georgievski <gdamjan@gmail.com>
- * @author ideaship <ideaship@users.noreply.github.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Core\Controller;
 
 use OC\Setup;
-use OCP\ILogger;
+use OCP\Util;
+use Psr\Log\LoggerInterface;
 
 class SetupController {
-	protected Setup $setupHelper;
 	private string $autoConfigFile;
 
-	/**
-	 * @param Setup $setupHelper
-	 */
-	public function __construct(Setup $setupHelper) {
-		$this->autoConfigFile = \OC::$configDir.'autoconfig.php';
-		$this->setupHelper = $setupHelper;
+	public function __construct(
+		protected Setup $setupHelper,
+		protected LoggerInterface $logger,
+	) {
+		$this->autoConfigFile = \OC::$configDir . 'autoconfig.php';
 	}
 
 	public function run(array $post): void {
@@ -59,7 +34,7 @@ class SetupController {
 			$post['dbpass'] = $post['dbpassword'];
 		}
 
-		if (!is_file(\OC::$configDir.'/CAN_INSTALL')) {
+		if (!$this->setupHelper->canInstallFileExists()) {
 			$this->displaySetupForbidden();
 			return;
 		}
@@ -81,7 +56,7 @@ class SetupController {
 		}
 	}
 
-	private function displaySetupForbidden() {
+	private function displaySetupForbidden(): void {
 		\OC_Template::printGuestPage('', 'installation_forbidden');
 	}
 
@@ -98,19 +73,24 @@ class SetupController {
 		];
 		$parameters = array_merge($defaults, $post);
 
+		Util::addStyle('server', null);
+
+		// include common nextcloud webpack bundle
+		Util::addScript('core', 'common');
+		Util::addScript('core', 'main');
+		Util::addTranslations('core');
+
 		\OC_Template::printGuestPage('', 'installation', $parameters);
 	}
 
-	private function finishSetup() {
+	private function finishSetup(): void {
 		if (file_exists($this->autoConfigFile)) {
 			unlink($this->autoConfigFile);
 		}
 		\OC::$server->getIntegrityCodeChecker()->runInstanceVerification();
 
-		if (\OC_Util::getChannel() !== 'git' && is_file(\OC::$configDir.'/CAN_INSTALL')) {
-			if (!unlink(\OC::$configDir.'/CAN_INSTALL')) {
-				\OC_Template::printGuestPage('', 'installation_incomplete');
-			}
+		if ($this->setupHelper->shouldRemoveCanInstallFile()) {
+			\OC_Template::printGuestPage('', 'installation_incomplete');
 		}
 
 		header('Location: ' . \OC::$server->getURLGenerator()->getAbsoluteURL('index.php/core/apps/recommended'));
@@ -119,7 +99,7 @@ class SetupController {
 
 	public function loadAutoConfig(array $post): array {
 		if (file_exists($this->autoConfigFile)) {
-			\OCP\Util::writeLog('core', 'Autoconfig file found, setting up Nextcloud…', ILogger::INFO);
+			$this->logger->info('Autoconfig file found, setting up Nextcloud…');
 			$AUTOCONFIG = [];
 			include $this->autoConfigFile;
 			$post = array_merge($post, $AUTOCONFIG);

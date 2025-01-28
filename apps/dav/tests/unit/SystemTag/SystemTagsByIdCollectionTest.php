@@ -1,46 +1,31 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\SystemTag;
 
 use OC\SystemTag\SystemTag;
+use OCA\DAV\SystemTag\SystemTagsByIdCollection;
 use OCP\IGroupManager;
 use OCP\IUser;
 use OCP\IUserSession;
 use OCP\SystemTag\ISystemTagManager;
+use OCP\SystemTag\ISystemTagObjectMapper;
 use OCP\SystemTag\TagNotFoundException;
+use PHPUnit\Framework\MockObject\MockObject;
 
 class SystemTagsByIdCollectionTest extends \Test\TestCase {
 
 	/**
-	 * @var \OCP\SystemTag\ISystemTagManager
+	 * @var ISystemTagManager
 	 */
 	private $tagManager;
 
 	/**
-	 * @var \OCP\IUser
+	 * @var IUser
 	 */
 	private $user;
 
@@ -57,21 +42,31 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 		$this->user->expects($this->any())
 			->method('getUID')
 			->willReturn('testuser');
+
+		/** @var IUserSession|MockObject */
 		$userSession = $this->getMockBuilder(IUserSession::class)
 			->getMock();
 		$userSession->expects($this->any())
 			->method('getUser')
 			->willReturn($this->user);
+
+		/** @var IGroupManager|MockObject */
 		$groupManager = $this->getMockBuilder(IGroupManager::class)
 			->getMock();
 		$groupManager->expects($this->any())
 			->method('isAdmin')
 			->with('testuser')
 			->willReturn($isAdmin);
-		return new \OCA\DAV\SystemTag\SystemTagsByIdCollection(
+
+		/** @var ISystemTagObjectMapper|MockObject */
+		$tagMapper = $this->getMockBuilder(ISystemTagObjectMapper::class)
+			->getMock();
+
+		return new SystemTagsByIdCollection(
 			$this->tagManager,
 			$userSession,
-			$groupManager
+			$groupManager,
+			$tagMapper,
 		);
 	}
 
@@ -80,20 +75,20 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 	}
 
 	
-	public function testForbiddenCreateFile() {
+	public function testForbiddenCreateFile(): void {
 		$this->expectException(\Sabre\DAV\Exception\Forbidden::class);
 
 		$this->getNode()->createFile('555');
 	}
 
 	
-	public function testForbiddenCreateDirectory() {
+	public function testForbiddenCreateDirectory(): void {
 		$this->expectException(\Sabre\DAV\Exception\Forbidden::class);
 
 		$this->getNode()->createDirectory('789');
 	}
 
-	public function testGetChild() {
+	public function testGetChild(): void {
 		$tag = new SystemTag(123, 'Test', true, false);
 		$this->tagManager->expects($this->once())
 			->method('canUserSeeTag')
@@ -113,7 +108,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 	}
 
 	
-	public function testGetChildInvalidName() {
+	public function testGetChildInvalidName(): void {
 		$this->expectException(\Sabre\DAV\Exception\BadRequest::class);
 
 		$this->tagManager->expects($this->once())
@@ -125,7 +120,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 	}
 
 	
-	public function testGetChildNotFound() {
+	public function testGetChildNotFound(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotFound::class);
 
 		$this->tagManager->expects($this->once())
@@ -137,7 +132,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 	}
 
 	
-	public function testGetChildUserNotVisible() {
+	public function testGetChildUserNotVisible(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotFound::class);
 
 		$tag = new SystemTag(123, 'Test', false, false);
@@ -150,7 +145,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 		$this->getNode(false)->getChild('123');
 	}
 
-	public function testGetChildrenAdmin() {
+	public function testGetChildrenAdmin(): void {
 		$tag1 = new SystemTag(123, 'One', true, false);
 		$tag2 = new SystemTag(456, 'Two', true, true);
 
@@ -169,7 +164,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 		$this->assertEquals($tag2, $children[1]->getSystemTag());
 	}
 
-	public function testGetChildrenNonAdmin() {
+	public function testGetChildrenNonAdmin(): void {
 		$tag1 = new SystemTag(123, 'One', true, false);
 		$tag2 = new SystemTag(456, 'Two', true, true);
 
@@ -188,7 +183,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 		$this->assertEquals($tag2, $children[1]->getSystemTag());
 	}
 
-	public function testGetChildrenEmpty() {
+	public function testGetChildrenEmpty(): void {
 		$this->tagManager->expects($this->once())
 			->method('getAllTags')
 			->with(null)
@@ -206,7 +201,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 	/**
 	 * @dataProvider childExistsProvider
 	 */
-	public function testChildExists($userVisible, $expectedResult) {
+	public function testChildExists($userVisible, $expectedResult): void {
 		$tag = new SystemTag(123, 'One', $userVisible, false);
 		$this->tagManager->expects($this->once())
 			->method('canUserSeeTag')
@@ -221,7 +216,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 		$this->assertEquals($expectedResult, $this->getNode()->childExists('123'));
 	}
 
-	public function testChildExistsNotFound() {
+	public function testChildExistsNotFound(): void {
 		$this->tagManager->expects($this->once())
 			->method('getTagsByIds')
 			->with(['123'])
@@ -231,7 +226,7 @@ class SystemTagsByIdCollectionTest extends \Test\TestCase {
 	}
 
 	
-	public function testChildExistsBadRequest() {
+	public function testChildExistsBadRequest(): void {
 		$this->expectException(\Sabre\DAV\Exception\BadRequest::class);
 
 		$this->tagManager->expects($this->once())

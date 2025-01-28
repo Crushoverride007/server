@@ -1,34 +1,10 @@
 <?php
 
 declare(strict_types=1);
-
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bernhard Posselt <dev@bernhard-posselt.com>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Thomas Tanghus <thomas@tanghus.net>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\AppFramework\Http;
 
@@ -38,17 +14,18 @@ use OC\AppFramework\Utility\ControllerMethodReflector;
 use OC\DB\ConnectionAdapter;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\ParameterOutOfRangeException;
 use OCP\AppFramework\Http\Response;
 use OCP\Diagnostics\IEventLogger;
 use OCP\IConfig;
 use OCP\IRequest;
+use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
  * Class to dispatch the request to the middleware dispatcher
  */
 class Dispatcher {
-
 	/** @var MiddlewareDispatcher */
 	private $middlewareDispatcher;
 
@@ -73,12 +50,14 @@ class Dispatcher {
 	/** @var IEventLogger */
 	private $eventLogger;
 
+	private ContainerInterface $appContainer;
+
 	/**
 	 * @param Http $protocol the http protocol with contains all status headers
 	 * @param MiddlewareDispatcher $middlewareDispatcher the dispatcher which
-	 * runs the middleware
+	 *                                                   runs the middleware
 	 * @param ControllerMethodReflector $reflector the reflector that is used to inject
-	 * the arguments for the controller
+	 *                                             the arguments for the controller
 	 * @param IRequest $request the incoming request
 	 * @param IConfig $config
 	 * @param ConnectionAdapter $connection
@@ -86,13 +65,14 @@ class Dispatcher {
 	 * @param IEventLogger $eventLogger
 	 */
 	public function __construct(Http $protocol,
-								MiddlewareDispatcher $middlewareDispatcher,
-								ControllerMethodReflector $reflector,
-								IRequest $request,
-								IConfig $config,
-								ConnectionAdapter $connection,
-								LoggerInterface $logger,
-								IEventLogger $eventLogger) {
+		MiddlewareDispatcher $middlewareDispatcher,
+		ControllerMethodReflector $reflector,
+		IRequest $request,
+		IConfig $config,
+		ConnectionAdapter $connection,
+		LoggerInterface $logger,
+		IEventLogger $eventLogger,
+		ContainerInterface $appContainer) {
 		$this->protocol = $protocol;
 		$this->middlewareDispatcher = $middlewareDispatcher;
 		$this->reflector = $reflector;
@@ -101,6 +81,7 @@ class Dispatcher {
 		$this->connection = $connection;
 		$this->logger = $logger;
 		$this->eventLogger = $eventLogger;
+		$this->appContainer = $appContainer;
 	}
 
 
@@ -108,10 +89,10 @@ class Dispatcher {
 	 * Handles a request and calls the dispatcher on the controller
 	 * @param Controller $controller the controller which will be called
 	 * @param string $methodName the method name which will be called on
-	 * the controller
+	 *                           the controller
 	 * @return array $array[0] contains a string with the http main header,
-	 * $array[1] contains headers in the form: $key => value, $array[2] contains
-	 * the response output
+	 *               $array[1] contains headers in the form: $key => value, $array[2] contains
+	 *               the response output
 	 * @throws \Exception
 	 */
 	public function dispatch(Controller $controller, string $methodName): array {
@@ -164,7 +145,7 @@ class Dispatcher {
 		} catch (\Throwable $throwable) {
 			$exception = new \Exception($throwable->getMessage() . ' in file \'' . $throwable->getFile() . '\' line ' . $throwable->getLine(), $throwable->getCode(), $throwable);
 			$response = $this->middlewareDispatcher->afterException(
-			$controller, $methodName, $exception);
+				$controller, $methodName, $exception);
 		}
 
 		$response = $this->middlewareDispatcher->afterController(
@@ -193,29 +174,23 @@ class Dispatcher {
 	private function executeController(Controller $controller, string $methodName): Response {
 		$arguments = [];
 
-		// valid types that will be casted
-		$types = ['int', 'integer', 'bool', 'boolean', 'float'];
+		// valid types that will be cast
+		$types = ['int', 'integer', 'bool', 'boolean', 'float', 'double'];
 
 		foreach ($this->reflector->getParameters() as $param => $default) {
-
 			// try to get the parameter from the request object and cast
 			// it to the type annotated in the @param annotation
 			$value = $this->request->getParam($param, $default);
 			$type = $this->reflector->getType($param);
 
-			// if this is submitted using GET or a POST form, 'false' should be
-			// converted to false
-			if (($type === 'bool' || $type === 'boolean') &&
-				$value === 'false' &&
-				(
-					$this->request->method === 'GET' ||
-					strpos($this->request->getHeader('Content-Type'),
-						'application/x-www-form-urlencoded') !== false
-				)
-			) {
+			// Converted the string `'false'` to false when the controller wants a boolean
+			if ($value === 'false' && ($type === 'bool' || $type === 'boolean')) {
 				$value = false;
 			} elseif ($value !== null && \in_array($type, $types, true)) {
 				settype($value, $type);
+				$this->ensureParameterValueSatisfiesRange($param, $value);
+			} elseif ($value === null && $type !== null && $this->appContainer->has($type)) {
+				$value = $this->appContainer->get($type);
 			}
 
 			$arguments[] = $value;
@@ -225,9 +200,12 @@ class Dispatcher {
 		$response = \call_user_func_array([$controller, $methodName], $arguments);
 		$this->eventLogger->end('controller:' . get_class($controller) . '::' . $methodName);
 
+		if (!($response instanceof Response)) {
+			$this->logger->debug($controller::class . '::' . $methodName . ' returned raw data. Please wrap it in a Response or one of it\'s inheritors.');
+		}
+
 		// format response
 		if ($response instanceof DataResponse || !($response instanceof Response)) {
-
 			// get format from the url format or request format parameter
 			$format = $this->request->getParam('format');
 
@@ -245,5 +223,23 @@ class Dispatcher {
 		}
 
 		return $response;
+	}
+
+	/**
+	 * @psalm-param mixed $value
+	 * @throws ParameterOutOfRangeException
+	 */
+	private function ensureParameterValueSatisfiesRange(string $param, $value): void {
+		$rangeInfo = $this->reflector->getRange($param);
+		if ($rangeInfo) {
+			if ($value < $rangeInfo['min'] || $value > $rangeInfo['max']) {
+				throw new ParameterOutOfRangeException(
+					$param,
+					$value,
+					$rangeInfo['min'],
+					$rangeInfo['max'],
+				);
+			}
+		}
 	}
 }

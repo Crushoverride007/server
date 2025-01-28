@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\Streams;
@@ -92,7 +91,7 @@ class IteratorDirectory extends WrapperHandler implements Directory {
 	 * Creates a directory handle from the provided array or iterator
 	 *
 	 * @param \Iterator | array $source
-	 * @return resource|bool
+	 * @return resource|false
 	 *
 	 * @throws \BadMethodCallException
 	 */

@@ -1,7 +1,7 @@
 /**
- * Copyright (c) 2015, Arthur Schiwon <blizzz@owncloud.com>
- * This file is licensed under the Affero General Public License version 3 or later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2015-2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 OCA = OCA || {};
@@ -86,7 +86,8 @@ OCA = OCA || {};
 			var agent = view.configModel.configuration.ldap_dn;
 			var pwd   = view.configModel.configuration.ldap_agent_password;
 
-			if((host && port  && base) && ((!agent && !pwd) || (agent && pwd))) {
+			if(((host && port && base) || (host && base && host.indexOf('ldapi://') > -1 ))
+        && ((!agent && !pwd) || (agent && pwd))) {
 				view.enableTabs();
 			} else {
 				view.disableTabs();
@@ -107,7 +108,8 @@ OCA = OCA || {};
 			var userFilter  = this.configModel.configuration.ldap_userlist_filter;
 			var loginFilter = this.configModel.configuration.ldap_login_filter;
 
-			if(host && port && base && userFilter && loginFilter) {
+			if((host && port && base && userFilter && loginFilter) ||
+        (host && base && host.indexOf('ldapi://') > -1 && userFilter && loginFilter)) {
 				this.configModel.requestConfigurationTest();
 			} else {
 				this._updateStatusIndicator(this.STATUS_INCOMPLETE);
@@ -354,7 +356,6 @@ OCA = OCA || {};
 			this.$settings.tabs({});
 			$('#ldapSettings button:not(.icon-default-style):not(.ui-multiselect)').button();
 			$('#ldapSettings').tabs({ beforeActivate: this.onTabChange });
-			$('#ldapSettings :input').tooltip({placement: "right", container: "body", trigger: "hover"});
 
 			this.initControls();
 			this.disableTabs();

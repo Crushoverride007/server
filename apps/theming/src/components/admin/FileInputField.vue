@@ -1,32 +1,16 @@
 <!--
-  - @copyright 2022 Christopher Ng <chrng8@gmail.com>
-  -
-  - @author Christopher Ng <chrng8@gmail.com>
-  -
-  - @license AGPL-3.0-or-later
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU Affero General Public License as
-  - published by the Free Software Foundation, either version 3 of the
-  - License, or (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-  - GNU Affero General Public License for more details.
-  -
-  - You should have received a copy of the GNU Affero General Public License
-  - along with this program. If not, see <http://www.gnu.org/licenses/>.
-  -
+  - SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
 <template>
 	<div class="field">
 		<label :for="id">{{ displayName }}</label>
 		<div class="field__row">
-			<NcButton type="secondary"
-				:id="id"
+			<NcButton :id="id"
+				type="secondary"
 				:aria-label="ariaLabel"
+				data-admin-theming-setting-file-picker
 				@click="activateLocalFilePicker">
 				<template #icon>
 					<Upload :size="20" />
@@ -36,6 +20,7 @@
 			<NcButton v-if="showReset"
 				type="tertiary"
 				:aria-label="t('theming', 'Reset to default')"
+				data-admin-theming-setting-file-reset
 				@click="undo">
 				<template #icon>
 					<Undo :size="20" />
@@ -44,6 +29,7 @@
 			<NcButton v-if="showRemove"
 				type="tertiary"
 				:aria-label="t('theming', 'Remove background image')"
+				data-admin-theming-setting-file-remove
 				@click="removeBackground">
 				<template #icon>
 					<Delete :size="20" />
@@ -68,6 +54,7 @@
 		</NcNoteCard>
 
 		<input ref="input"
+			:accept="acceptMime"
 			type="file"
 			@change="onChange">
 	</div>
@@ -76,17 +63,20 @@
 <script>
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
+import { loadState } from '@nextcloud/initial-state'
 
-import {
-	NcButton,
-	NcLoadingIcon,
-	NcNoteCard,
-} from '@nextcloud/vue'
+import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+import NcLoadingIcon from '@nextcloud/vue/dist/Components/NcLoadingIcon.js'
+import NcNoteCard from '@nextcloud/vue/dist/Components/NcNoteCard.js'
 import Delete from 'vue-material-design-icons/Delete.vue'
 import Undo from 'vue-material-design-icons/UndoVariant.vue'
 import Upload from 'vue-material-design-icons/Upload.vue'
 
 import FieldMixin from '../../mixins/admin/FieldMixin.js'
+
+const {
+	allowedMimeTypes,
+} = loadState('theming', 'adminThemingParameters', {})
 
 export default {
 	name: 'FileInputField',
@@ -119,7 +109,7 @@ export default {
 		},
 		defaultMimeValue: {
 			type: String,
-			required: true,
+			default: '',
 		},
 		displayName: {
 			type: String,
@@ -134,6 +124,8 @@ export default {
 	data() {
 		return {
 			showLoading: false,
+			acceptMime: (allowedMimeTypes[this.name]
+				|| ['image/jpeg', 'image/png', 'image/gif', 'image/webp']).join(','),
 		}
 	},
 
@@ -173,9 +165,10 @@ export default {
 			const url = generateUrl('/apps/theming/ajax/uploadImage')
 			try {
 				this.showLoading = true
-				await axios.post(url, formData)
+				const { data } = await axios.post(url, formData)
 				this.showLoading = false
 				this.$emit('update:mime-value', file.type)
+				this.$emit('uploaded', data.data.url)
 				this.handleSuccess()
 			} catch (e) {
 				this.showLoading = false
@@ -216,7 +209,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@import './shared/field.scss';
+@use './shared/field' as *;
 
 .field {
 	&__loading-icon {

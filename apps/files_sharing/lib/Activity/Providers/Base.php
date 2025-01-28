@@ -1,28 +1,11 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\Files_Sharing\Activity\Providers;
 
+use OCP\Activity\Exceptions\UnknownActivityException;
 use OCP\Activity\IEvent;
 use OCP\Activity\IEventMerger;
 use OCP\Activity\IManager;
@@ -31,53 +14,25 @@ use OCP\Contacts\IManager as IContactsManager;
 use OCP\Federation\ICloudIdManager;
 use OCP\IL10N;
 use OCP\IURLGenerator;
-use OCP\IUser;
 use OCP\IUserManager;
 use OCP\L10N\IFactory;
 
 abstract class Base implements IProvider {
-
-	/** @var IFactory */
-	protected $languageFactory;
-
 	/** @var IL10N */
 	protected $l;
-
-	/** @var IURLGenerator */
-	protected $url;
-
-	/** @var IManager */
-	protected $activityManager;
-
-	/** @var IUserManager */
-	protected $userManager;
-
-	/** @var IEventMerger */
-	protected $eventMerger;
-
-	/** @var IContactsManager */
-	protected $contactsManager;
-
-	/** @var ICloudIdManager */
-	protected $cloudIdManager;
 
 	/** @var array */
 	protected $displayNames = [];
 
-	public function __construct(IFactory $languageFactory,
-								IURLGenerator $url,
-								IManager $activityManager,
-								IUserManager $userManager,
-								ICloudIdManager $cloudIdManager,
-								IContactsManager $contactsManager,
-								IEventMerger $eventMerger) {
-		$this->languageFactory = $languageFactory;
-		$this->url = $url;
-		$this->activityManager = $activityManager;
-		$this->userManager = $userManager;
-		$this->cloudIdManager = $cloudIdManager;
-		$this->contactsManager = $contactsManager;
-		$this->eventMerger = $eventMerger;
+	public function __construct(
+		protected IFactory $languageFactory,
+		protected IURLGenerator $url,
+		protected IManager $activityManager,
+		protected IUserManager $userManager,
+		protected ICloudIdManager $cloudIdManager,
+		protected IContactsManager $contactsManager,
+		protected IEventMerger $eventMerger,
+	) {
 	}
 
 	/**
@@ -85,12 +40,12 @@ abstract class Base implements IProvider {
 	 * @param IEvent $event
 	 * @param IEvent|null $previousEvent
 	 * @return IEvent
-	 * @throws \InvalidArgumentException
+	 * @throws UnknownActivityException
 	 * @since 11.0.0
 	 */
-	public function parse($language, IEvent $event, IEvent $previousEvent = null) {
+	public function parse($language, IEvent $event, ?IEvent $previousEvent = null) {
 		if ($event->getApp() !== 'files_sharing') {
-			throw new \InvalidArgumentException();
+			throw new UnknownActivityException();
 		}
 
 		$this->l = $this->languageFactory->get('files_sharing', $language);
@@ -121,27 +76,13 @@ abstract class Base implements IProvider {
 	 * @throws \InvalidArgumentException
 	 * @since 11.0.0
 	 */
-	abstract protected function parseLongVersion(IEvent $event, IEvent $previousEvent = null);
+	abstract protected function parseLongVersion(IEvent $event, ?IEvent $previousEvent = null);
 
 	/**
-	 * @param IEvent $event
-	 * @param string $subject
-	 * @param array $parameters
 	 * @throws \InvalidArgumentException
 	 */
-	protected function setSubjects(IEvent $event, $subject, array $parameters) {
-		$placeholders = $replacements = [];
-		foreach ($parameters as $placeholder => $parameter) {
-			$placeholders[] = '{' . $placeholder . '}';
-			if ($parameter['type'] === 'file') {
-				$replacements[] = $parameter['path'];
-			} else {
-				$replacements[] = $parameter['name'];
-			}
-		}
-
-		$event->setParsedSubject(str_replace($placeholders, $replacements, $subject))
-			->setRichSubject($subject, $parameters);
+	protected function setSubjects(IEvent $event, string $subject, array $parameters): void {
+		$event->setRichSubject($subject, $parameters);
 	}
 
 	/**
@@ -150,14 +91,13 @@ abstract class Base implements IProvider {
 	 * @return array
 	 * @throws \InvalidArgumentException
 	 */
-	protected function getFile($parameter, IEvent $event = null) {
+	protected function getFile($parameter, ?IEvent $event = null) {
 		if (is_array($parameter)) {
 			$path = reset($parameter);
-			$id = (string) key($parameter);
+			$id = (string)key($parameter);
 		} elseif ($event !== null) {
-			// Legacy from before ownCloud 8.2
 			$path = $parameter;
-			$id = $event->getObjectId();
+			$id = (string)$event->getObjectId();
 		} else {
 			throw new \InvalidArgumentException('Could not generate file parameter');
 		}
@@ -173,9 +113,11 @@ abstract class Base implements IProvider {
 
 	/**
 	 * @param string $uid
+	 * @param string $overwriteDisplayName - overwrite display name, only if user is not local
+	 *
 	 * @return array
 	 */
-	protected function getUser($uid) {
+	protected function getUser(string $uid, string $overwriteDisplayName = '') {
 		// First try local user
 		$displayName = $this->userManager->getDisplayName($uid);
 		if ($displayName !== null) {
@@ -192,7 +134,7 @@ abstract class Base implements IProvider {
 			return [
 				'type' => 'user',
 				'id' => $cloudId->getUser(),
-				'name' => $this->getDisplayNameFromAddressBook($cloudId->getDisplayId()),
+				'name' => (($overwriteDisplayName !== '') ? $overwriteDisplayName : $this->getDisplayNameFromAddressBook($cloudId->getDisplayId())),
 				'server' => $cloudId->getRemote(),
 			];
 		}
@@ -201,7 +143,7 @@ abstract class Base implements IProvider {
 		return [
 			'type' => 'user',
 			'id' => $uid,
-			'name' => $uid,
+			'name' => (($overwriteDisplayName !== '') ? $overwriteDisplayName : $uid),
 		];
 	}
 

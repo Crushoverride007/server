@@ -1,5 +1,9 @@
+<!--
+  - SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <template>
-	<NcSettingsSection :title="$t('dav', 'Calendar server')"
+	<NcSettingsSection :name="$t('dav', 'Calendar server')"
 		:doc-url="userSyncCalendarsDocUrl">
 		<!-- Can use v-html as:
 			- $t passes the translated string through DOMPurify.sanitize,
@@ -51,7 +55,7 @@
 		</p>
 		<p class="indented">
 			<NcCheckboxRadioSwitch id="caldavSendEventRemindersToSharedGroupMembers"
-				:checked.sync="sendEventRemindersToSharedGroupMembers"
+				:checked.sync="sendEventRemindersToSharedUsers"
 				type="switch"
 				:disabled="!sendEventReminders">
 				{{ $t('dav', 'Send reminder notifications to calendar sharees as well' ) }}
@@ -75,8 +79,8 @@
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 import { loadState } from '@nextcloud/initial-state'
-import NcSettingsSection from '@nextcloud/vue/dist/Components/NcSettingsSection'
-import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch'
+import NcSettingsSection from '@nextcloud/vue/dist/Components/NcSettingsSection.js'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
 
 const userSyncCalendarsDocUrl = loadState('dav', 'userSyncCalendarsDocUrl', '#')
 
@@ -124,17 +128,17 @@ export default {
 			OCP.AppConfig.setValue(
 				'dav',
 				'sendInvitations',
-				value ? 'yes' : 'no'
+				value ? 'yes' : 'no',
 			)
 		},
 		sendEventReminders(value) {
 			OCP.AppConfig.setValue('dav', 'sendEventReminders', value ? 'yes' : 'no')
 		},
-		sendEventRemindersToSharedGroupMembers(value) {
+		sendEventRemindersToSharedUsers(value) {
 			OCP.AppConfig.setValue(
 				'dav',
-				'sendEventRemindersToSharedGroupMembers',
-				value ? 'yes' : 'no'
+				'sendEventRemindersToSharedUsers',
+				value ? 'yes' : 'no',
 			)
 		},
 		sendEventRemindersPush(value) {
@@ -146,12 +150,13 @@ export default {
 
 <style scoped>
 	.indented {
-		padding-left: 28px;
+		padding-inline-start: 28px;
 	}
 	/** Use deep selector to affect v-html */
-	* >>> a {
+	* :deep(a) {
 		text-decoration: underline;
 	}
+
 	.settings-hint {
 		margin-top: -.2em;
 		margin-bottom: 1em;

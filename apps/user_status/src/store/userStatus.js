@@ -1,23 +1,6 @@
 /**
- * @copyright Copyright (c) 2020 Georg Ehrke
- *
- * @author Georg Ehrke <oc.list@georgehrke.com>
- *
- * @license AGPL-3.0-or-later
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 import {
@@ -26,16 +9,16 @@ import {
 	setPredefinedMessage,
 	setCustomMessage,
 	clearMessage,
-} from '../services/statusService'
+} from '../services/statusService.js'
 import { loadState } from '@nextcloud/initial-state'
 import { getCurrentUser } from '@nextcloud/auth'
-import { getTimestampForClearAt } from '../services/clearAtService'
+import { getTimestampForClearAt } from '../services/clearAtService.js'
 import { emit } from '@nextcloud/event-bus'
 
 const state = {
 	// Status (online / away / dnd / invisible / offline)
 	status: null,
-	// Whether or not the status is user-defined
+	// Whether the status is user-defined
 	statusIsUserDefined: null,
 	// A custom message set by the user
 	message: null,
@@ -43,7 +26,7 @@ const state = {
 	icon: null,
 	// When to automatically clean the status
 	clearAt: null,
-	// Whether or not the message is predefined
+	// Whether the message is predefined
 	// (and can automatically be translated by Nextcloud)
 	messageIsPredefined: null,
 	// The id of the message in case it's predefined

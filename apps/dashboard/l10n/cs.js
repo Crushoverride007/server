@@ -3,7 +3,8 @@ OC.L10N.register(
     {
     "Dashboard" : "Nástěnka",
     "Dashboard app" : "Aplikace Nástěnka",
-    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an\noverview of your upcoming appointments, urgent emails, chat messages,\nincoming tickets, latest tweets and much more! Users can add the widgets\nthey like and change the background to their liking." : "Začněte svůj den informovaní\n\nNextcloud Nástěnka je váš úvodní bod dne, který vám podává přehled\nnadcházejících schůzek, neodkladných e-mailů, zpráv v chatech, příchozích\npožadavků, nejnovějších tweetů a mnoha dalšího! Uživatelé si\nmohou přidávat ovládací prvky, které chtějí a měnit pozadí dle své libosti.",
+    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an overview of your upcoming appointments, urgent emails, chat messages, incoming tickets, latest tweets and much more! People can add the widgets they like and change the background to their liking." : "Začněte svůj den informovaní\n\nNextcloud Nástěnka je váš úvodní bod dne, který vám podává přehled\nnadcházejících schůzek, neodkladných e-mailů, zpráv v chatech, příchozích\npožadavků, nejnovějších tweetů a mnoha dalšího! Lidé si\nmohou přidávat ovládací prvky, které chtějí a měnit pozadí dle své libosti.",
+    "\"{title} icon\"" : "„ikona {title}“",
     "Customize" : "Přizpůsobit si",
     "Edit widgets" : "Upravit ovládací prvky",
     "Get more widgets from the App Store" : "Získat další ovládací prvky z katalogu aplikací",
@@ -22,11 +23,7 @@ OC.L10N.register(
     "Good evening, {name}" : "Dobrý večer, {name}",
     "Hello" : "Dobrý den",
     "Hello, {name}" : "Dobrý den, {name}",
-    "Show something" : "Zobrazit něco",
-    "Change background image" : "Změnit obrázek na pozadí",
-    "Pick from Files" : "Vybrat ze souborů",
-    "Default images" : "Výchozí obrázek",
-    "Plain background" : "Jednolité pozadí",
-    "Insert from {productName}" : "Vložit z {productName}"
+    "Happy birthday 🥳🤩🎂🎉" : "Všechno nejlepší k narozeninám 🥳🤩🎂🎉",
+    "Happy birthday, {name} 🥳🤩🎂🎉" : "Všechno nejlepší k narozeninám, {name} 🥳🤩🎂🎉"
 },
 "nplurals=4; plural=(n == 1 && n % 1 == 0) ? 0 : (n >= 2 && n <= 4 && n % 1 == 0) ? 1: (n % 1 != 0 ) ? 2 : 3;");

@@ -1,9 +1,8 @@
 <?php
 /**
- * Copyright (c) 2016 Joas Schilling <nickvergessen@owncloud.com>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\L10N;
@@ -11,9 +10,12 @@ namespace Test\L10N;
 use DateTime;
 use OC\L10N\Factory;
 use OC\L10N\L10N;
+use OCP\App\IAppManager;
+use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IUserSession;
+use OCP\L10N\IFactory;
 use Test\TestCase;
 
 /**
@@ -32,26 +34,28 @@ class L10nTest extends TestCase {
 		$request = $this->createMock(IRequest::class);
 		/** @var IUserSession $userSession */
 		$userSession = $this->createMock(IUserSession::class);
-		return new Factory($config, $request, $userSession, \OC::$SERVERROOT);
+		$cacheFactory = $this->createMock(ICacheFactory::class);
+		$appManager = $this->createMock(IAppManager::class);
+		return new Factory($config, $request, $userSession, $cacheFactory, \OC::$SERVERROOT, $appManager);
 	}
 
 	public function testSimpleTranslationWithTrailingColon(): void {
-		$transFile = \OC::$SERVERROOT.'/tests/data/l10n/de.json';
+		$transFile = \OC::$SERVERROOT . '/tests/data/l10n/de.json';
 		$l = new L10N($this->getFactory(), 'test', 'de', 'de_AT', [$transFile]);
 
 		$this->assertEquals('Files:', $l->t('Files:'));
 	}
 
-	public function testGermanPluralTranslations() {
-		$transFile = \OC::$SERVERROOT.'/tests/data/l10n/de.json';
+	public function testGermanPluralTranslations(): void {
+		$transFile = \OC::$SERVERROOT . '/tests/data/l10n/de.json';
 		$l = new L10N($this->getFactory(), 'test', 'de', 'de_AT', [$transFile]);
 
-		$this->assertEquals('1 Datei', (string) $l->n('%n file', '%n files', 1));
-		$this->assertEquals('2 Dateien', (string) $l->n('%n file', '%n files', 2));
+		$this->assertEquals('1 Datei', (string)$l->n('%n file', '%n files', 1));
+		$this->assertEquals('2 Dateien', (string)$l->n('%n file', '%n files', 2));
 	}
 
-	public function testRussianPluralTranslations() {
-		$transFile = \OC::$SERVERROOT.'/tests/data/l10n/ru.json';
+	public function testRussianPluralTranslations(): void {
+		$transFile = \OC::$SERVERROOT . '/tests/data/l10n/ru.json';
 		$l = new L10N($this->getFactory(), 'test', 'ru', 'ru_UA', [$transFile]);
 
 		$this->assertEquals('1 файл', (string)$l->n('%n file', '%n files', 1));
@@ -74,13 +78,22 @@ class L10nTest extends TestCase {
 		*/
 	}
 
-	public function testCzechPluralTranslations() {
-		$transFile = \OC::$SERVERROOT.'/tests/data/l10n/cs.json';
+	public function testCzechPluralTranslations(): void {
+		$transFile = \OC::$SERVERROOT . '/tests/data/l10n/cs.json';
 		$l = new L10N($this->getFactory(), 'test', 'cs', 'cs_CZ', [$transFile]);
 
 		$this->assertEquals('1 okno', (string)$l->n('%n window', '%n windows', 1));
 		$this->assertEquals('2 okna', (string)$l->n('%n window', '%n windows', 2));
 		$this->assertEquals('5 oken', (string)$l->n('%n window', '%n windows', 5));
+	}
+
+	public function testGermanPluralWithCzechLocaleTranslations(): void {
+		$transFile = \OC::$SERVERROOT . '/tests/data/l10n/de.json';
+		$l = new L10N($this->getFactory(), 'test', 'de', 'cs_CZ', [$transFile]);
+
+		$this->assertEquals('1 Datei', (string)$l->n('%n file', '%n files', 1));
+		$this->assertEquals('2 Dateien', (string)$l->n('%n file', '%n files', 2));
+		$this->assertEquals('5 Dateien', (string)$l->n('%n file', '%n files', 5));
 	}
 
 	public function dataPlaceholders(): array {
@@ -98,7 +111,7 @@ class L10nTest extends TestCase {
 	 * @param $expected
 	 */
 	public function testPlaceholders($string, $expected): void {
-		$transFile = \OC::$SERVERROOT.'/tests/data/l10n/de.json';
+		$transFile = \OC::$SERVERROOT . '/tests/data/l10n/de.json';
 		$l = new L10N($this->getFactory(), 'test', 'de', 'de_AT', [$transFile]);
 
 		$this->assertEquals($expected, $l->t($string, ['1', '2']));
@@ -107,34 +120,34 @@ class L10nTest extends TestCase {
 	public function localizationData() {
 		return [
 			// timestamp as string
-			['February 13, 2009 at 11:31:30 PM GMT+0', 'en', 'en_US', 'datetime', '1234567890'],
-			['13. Februar 2009 um 23:31:30 GMT+0', 'de', 'de_DE', 'datetime', '1234567890'],
+			["February 13, 2009, 11:31:30\xE2\x80\xAFPM UTC", 'en', 'en_US', 'datetime', '1234567890'],
+			['13. Februar 2009, 23:31:30 UTC', 'de', 'de_DE', 'datetime', '1234567890'],
 			['February 13, 2009', 'en', 'en_US', 'date', '1234567890'],
 			['13. Februar 2009', 'de', 'de_DE', 'date', '1234567890'],
-			['11:31:30 PM GMT+0', 'en', 'en_US', 'time', '1234567890'],
-			['23:31:30 GMT+0', 'de', 'de_DE', 'time', '1234567890'],
+			["11:31:30\xE2\x80\xAFPM UTC", 'en', 'en_US', 'time', '1234567890'],
+			['23:31:30 UTC', 'de', 'de_DE', 'time', '1234567890'],
 
 			// timestamp as int
-			['February 13, 2009 at 11:31:30 PM GMT+0', 'en', 'en_US', 'datetime', 1234567890],
-			['13. Februar 2009 um 23:31:30 GMT+0', 'de', 'de_DE', 'datetime', 1234567890],
+			["February 13, 2009, 11:31:30\xE2\x80\xAFPM UTC", 'en', 'en_US', 'datetime', 1234567890],
+			['13. Februar 2009, 23:31:30 UTC', 'de', 'de_DE', 'datetime', 1234567890],
 			['February 13, 2009', 'en', 'en_US', 'date', 1234567890],
 			['13. Februar 2009', 'de', 'de_DE', 'date', 1234567890],
-			['11:31:30 PM GMT+0', 'en', 'en_US', 'time', 1234567890],
-			['23:31:30 GMT+0', 'de', 'de_DE', 'time', 1234567890],
+			["11:31:30\xE2\x80\xAFPM UTC", 'en', 'en_US', 'time', 1234567890],
+			['23:31:30 UTC', 'de', 'de_DE', 'time', 1234567890],
 
 			// DateTime object
-			['February 13, 2009 at 11:31:30 PM GMT+0', 'en', 'en_US', 'datetime', new DateTime('@1234567890')],
-			['13. Februar 2009 um 23:31:30 GMT+0', 'de', 'de_DE', 'datetime', new DateTime('@1234567890')],
+			["February 13, 2009, 11:31:30\xE2\x80\xAFPM GMT+0", 'en', 'en_US', 'datetime', new DateTime('@1234567890')],
+			['13. Februar 2009, 23:31:30 GMT+0', 'de', 'de_DE', 'datetime', new DateTime('@1234567890')],
 			['February 13, 2009', 'en', 'en_US', 'date', new DateTime('@1234567890')],
 			['13. Februar 2009', 'de', 'de_DE', 'date', new DateTime('@1234567890')],
-			['11:31:30 PM GMT+0', 'en', 'en_US', 'time', new DateTime('@1234567890')],
+			["11:31:30\xE2\x80\xAFPM GMT+0", 'en', 'en_US', 'time', new DateTime('@1234567890')],
 			['23:31:30 GMT+0', 'de', 'de_DE', 'time', new DateTime('@1234567890')],
 
 			// en_GB
-			['13 February 2009 at 23:31:30 GMT+0', 'en_GB', 'en_GB', 'datetime', new DateTime('@1234567890')],
+			['13 February 2009, 23:31:30 GMT+0', 'en_GB', 'en_GB', 'datetime', new DateTime('@1234567890')],
 			['13 February 2009', 'en_GB', 'en_GB', 'date', new DateTime('@1234567890')],
 			['23:31:30 GMT+0', 'en_GB', 'en_GB', 'time', new DateTime('@1234567890')],
-			['13 February 2009 at 23:31:30 GMT+0', 'en-GB', 'en_GB', 'datetime', new DateTime('@1234567890')],
+			['13 February 2009, 23:31:30 GMT+0', 'en-GB', 'en_GB', 'datetime', new DateTime('@1234567890')],
 			['13 February 2009', 'en-GB', 'en_GB', 'date', new DateTime('@1234567890')],
 			['23:31:30 GMT+0', 'en-GB', 'en_GB', 'time', new DateTime('@1234567890')],
 		];
@@ -143,7 +156,7 @@ class L10nTest extends TestCase {
 	/**
 	 * @dataProvider localizationData
 	 */
-	public function testNumericStringLocalization($expectedDate, $lang, $locale, $type, $value) {
+	public function testNumericStringLocalization($expectedDate, $lang, $locale, $type, $value): void {
 		$l = new L10N($this->getFactory(), 'test', $lang, $locale, []);
 		$this->assertSame($expectedDate, $l->l($type, $value));
 	}
@@ -161,7 +174,7 @@ class L10nTest extends TestCase {
 	 * @param $lang
 	 * @param $locale
 	 */
-	public function testFirstWeekDay($expected, $lang, $locale) {
+	public function testFirstWeekDay($expected, $lang, $locale): void {
 		$l = new L10N($this->getFactory(), 'test', $lang, $locale, []);
 		$this->assertSame($expected, $l->l('firstday', 'firstday'));
 	}
@@ -179,23 +192,23 @@ class L10nTest extends TestCase {
 	 * @param $lang
 	 * @param $locale
 	 */
-	public function testJSDate($expected, $lang, $locale) {
+	public function testJSDate($expected, $lang, $locale): void {
 		$l = new L10N($this->getFactory(), 'test', $lang, $locale, []);
 		$this->assertSame($expected, $l->l('jsdate', 'jsdate'));
 	}
 
-	public function testFactoryGetLanguageCode() {
+	public function testFactoryGetLanguageCode(): void {
 		$l = $this->getFactory()->get('lib', 'de');
 		$this->assertEquals('de', $l->getLanguageCode());
 	}
 
-	public function testServiceGetLanguageCode() {
-		$l = \OC::$server->getL10N('lib', 'de');
+	public function testServiceGetLanguageCode(): void {
+		$l = \OCP\Util::getL10N('lib', 'de');
 		$this->assertEquals('de', $l->getLanguageCode());
 	}
 
-	public function testWeekdayName() {
-		$l = \OC::$server->getL10N('lib', 'de');
+	public function testWeekdayName(): void {
+		$l = \OCP\Util::getL10N('lib', 'de');
 		$this->assertEquals('Mo.', $l->l('weekdayName', new \DateTime('2017-11-6'), ['width' => 'abbreviated']));
 	}
 
@@ -204,10 +217,10 @@ class L10nTest extends TestCase {
 	 * @param $locale
 	 * @param $language
 	 */
-	public function testFindLanguageFromLocale($locale, $language) {
+	public function testFindLanguageFromLocale($locale, $language): void {
 		$this->assertEquals(
 			$language,
-			\OC::$server->getL10NFactory()->findLanguageFromLocale('lib', $locale)
+			\OC::$server->get(IFactory::class)->findLanguageFromLocale('lib', $locale)
 		);
 	}
 

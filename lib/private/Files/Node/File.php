@@ -1,30 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Node;
 
@@ -37,7 +16,7 @@ class File extends Node implements \OCP\Files\File {
 	 * Creates a Folder that represents a non-existing path
 	 *
 	 * @param string $path path
-	 * @return string non-existing node class
+	 * @return NonExistingFile non-existing node
 	 */
 	protected function createNonExistingNode($path) {
 		return new NonExistingFile($this->root, $this->view, $path);
@@ -46,14 +25,16 @@ class File extends Node implements \OCP\Files\File {
 	/**
 	 * @return string
 	 * @throws NotPermittedException
+	 * @throws GenericFileException
 	 * @throws LockedException
 	 */
 	public function getContent() {
 		if ($this->checkPermissions(\OCP\Constants::PERMISSION_READ)) {
-			/**
-			 * @var \OC\Files\Storage\Storage $storage;
-			 */
-			return $this->view->file_get_contents($this->path);
+			$content = $this->view->file_get_contents($this->path);
+			if ($content === false) {
+				throw new GenericFileException();
+			}
+			return $content;
 		} else {
 			throw new NotPermittedException();
 		}
@@ -62,7 +43,7 @@ class File extends Node implements \OCP\Files\File {
 	/**
 	 * @param string|resource $data
 	 * @throws NotPermittedException
-	 * @throws \OCP\Files\GenericFileException
+	 * @throws GenericFileException
 	 * @throws LockedException
 	 */
 	public function putContent($data) {
@@ -80,7 +61,7 @@ class File extends Node implements \OCP\Files\File {
 
 	/**
 	 * @param string $mode
-	 * @return resource
+	 * @return resource|false
 	 * @throws NotPermittedException
 	 * @throws LockedException
 	 */

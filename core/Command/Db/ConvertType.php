@@ -1,45 +1,20 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Andreas Fischer <bantu@owncloud.com>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Bernhard Ostertag <bernieo.code@gmx.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Łukasz Buśko <busko.lukasz@pm.me>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Sander Ruitenbeek <sander@grids.be>
- * @author Simon Spannagel <simonspa@kth.se>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Core\Command\Db;
 
 use Doctrine\DBAL\Exception;
 use Doctrine\DBAL\Schema\AbstractAsset;
 use Doctrine\DBAL\Schema\Table;
-use OCP\DB\Types;
 use OC\DB\Connection;
 use OC\DB\ConnectionFactory;
 use OC\DB\MigrationService;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\DB\Types;
 use OCP\IConfig;
 use Stecman\Component\Symfony\Console\BashCompletion\Completion\CompletionAwareInterface;
 use Stecman\Component\Symfony\Console\BashCompletion\CompletionContext;
@@ -56,13 +31,12 @@ use function preg_match;
 use function preg_quote;
 
 class ConvertType extends Command implements CompletionAwareInterface {
-	protected IConfig $config;
-	protected ConnectionFactory $connectionFactory;
-	protected array $columnTypes;
+	protected array $columnTypes = [];
 
-	public function __construct(IConfig $config, ConnectionFactory $connectionFactory) {
-		$this->config = $config;
-		$this->connectionFactory = $connectionFactory;
+	public function __construct(
+		protected IConfig $config,
+		protected ConnectionFactory $connectionFactory,
+	) {
 		parent::__construct();
 	}
 
@@ -168,16 +142,26 @@ class ConvertType extends Command implements CompletionAwareInterface {
 		if ($input->isInteractive()) {
 			/** @var QuestionHelper $helper */
 			$helper = $this->getHelper('question');
-			$question = new Question('What is the database password?');
+			$question = new Question('What is the database password (press <enter> for none)? ');
 			$question->setHidden(true);
 			$question->setHiddenFallback(false);
 			$password = $helper->ask($input, $output, $question);
+			if ($password === null) {
+				$password = ''; // possibly unnecessary
+			}
 			$input->setOption('password', $password);
 			return;
 		}
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output): int {
+		// WARNING:
+		// Leave in place until #45257 is addressed to prevent data loss (hopefully in time for the next maintenance release)
+		//
+		throw new \InvalidArgumentException(
+			'This command is temporarily disabled (until the next maintenance release).'
+		);
+
 		$this->validateInput($input, $output);
 		$this->readPassword($input, $output);
 
@@ -200,7 +184,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 			$output->writeln('<comment>The following tables will not be converted:</comment>');
 			$output->writeln($extraFromTables);
 			if (!$input->getOption('all-apps')) {
-				$output->writeln('<comment>Please note that tables belonging to available but currently not installed apps</comment>');
+				$output->writeln('<comment>Please note that tables belonging to disabled (but not removed) apps</comment>');
 				$output->writeln('<comment>can be included by specifying the --all-apps option.</comment>');
 			}
 
@@ -231,7 +215,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 
 		$apps = $input->getOption('all-apps') ? \OC_App::getAllApps() : \OC_App::getEnabledApps();
 		foreach ($apps as $app) {
-			$output->writeln('<info> - '.$app.'</info>');
+			$output->writeln('<info> - ' . $app . '</info>');
 			// Make sure autoloading works...
 			\OC_App::loadApp($app);
 			$fromMS = new MigrationService($app, $fromDB);
@@ -252,9 +236,24 @@ class ConvertType extends Command implements CompletionAwareInterface {
 			'password' => $input->getOption('password'),
 			'dbname' => $input->getArgument('database'),
 		]);
+
+		// parse port
 		if ($input->getOption('port')) {
 			$connectionParams['port'] = $input->getOption('port');
 		}
+
+		// parse hostname for unix socket
+		if (preg_match('/^(.+)(:(\d+|[^:]+))?$/', $input->getOption('hostname'), $matches)) {
+			$connectionParams['host'] = $matches[1];
+			if (isset($matches[3])) {
+				if (is_numeric($matches[3])) {
+					$connectionParams['port'] = $matches[3];
+				} else {
+					$connectionParams['unix_socket'] = $matches[3];
+				}
+			}
+		}
+
 		return $this->connectionFactory->getConnection($type, $connectionParams);
 	}
 
@@ -264,7 +263,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 			$output->writeln('<info>Clearing schema in new database</info>');
 		}
 		foreach ($toTables as $table) {
-			$db->getSchemaManager()->dropTable($table);
+			$db->createSchemaManager()->dropTable($table);
 		}
 	}
 
@@ -277,7 +276,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 			}
 			return preg_match($filterExpression, $asset) !== false;
 		});
-		return $db->getSchemaManager()->listTableNames();
+		return $db->createSchemaManager()->listTableNames();
 	}
 
 	/**
@@ -299,7 +298,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 		$query->automaticTablePrefix(false);
 		$query->select($query->func()->count('*', 'num_entries'))
 			->from($table->getName());
-		$result = $query->execute();
+		$result = $query->executeQuery();
 		$count = $result->fetchOne();
 		$result->closeCursor();
 
@@ -338,7 +337,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 		for ($chunk = 0; $chunk < $numChunks; $chunk++) {
 			$query->setFirstResult($chunk * $chunkSize);
 
-			$result = $query->execute();
+			$result = $query->executeQuery();
 
 			try {
 				$toDB->beginTransaction();
@@ -405,7 +404,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 		try {
 			// copy table rows
 			foreach ($tables as $table) {
-				$output->writeln('<info> - '.$table.'</info>');
+				$output->writeln('<info> - ' . $table . '</info>');
 				$this->copyTable($fromDB, $toDB, $schema->getTable($table), $input, $output);
 			}
 			if ($input->getArgument('type') === 'pgsql') {
@@ -428,7 +427,7 @@ class ConvertType extends Command implements CompletionAwareInterface {
 		$dbName = $input->getArgument('database');
 		$password = $input->getOption('password');
 		if ($input->getOption('port')) {
-			$dbHost .= ':'.$input->getOption('port');
+			$dbHost .= ':' . $input->getOption('port');
 		}
 
 		$this->config->setSystemValues([

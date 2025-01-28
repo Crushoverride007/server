@@ -1,4 +1,9 @@
 <?php
+/**
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
 $noProviders = empty($_['providers']);
 ?>
 <div class="body-login-container update two-factor">
@@ -37,18 +42,18 @@ $noProviders = empty($_['providers']);
 		<li>
 			<a class="two-factor-provider"
 			   href="<?php p(\OC::$server->getURLGenerator()->linkToRoute('core.TwoFactorChallenge.showChallenge',
-								[
-									'challengeProviderId' => $provider->getId(),
-									'redirect_url' => $_['redirect_url'],
-								]
-							)) ?>">
+			   	[
+			   		'challengeProviderId' => $provider->getId(),
+			   		'redirect_url' => $_['redirect_url'],
+			   	]
+			   )) ?>">
 				<?php
 				if ($provider instanceof \OCP\Authentication\TwoFactorAuth\IProvidesIcons) {
 					$icon = $provider->getLightIcon();
 				} else {
 					$icon = image_path('core', 'actions/password-white.svg');
 				}
-				?>
+		?>
 				<img src="<?php p($icon) ?>" alt="" />
 				<div>
 					<h3><?php p($provider->getDisplayName()) ?></h3>

@@ -3,29 +3,13 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2020, Georg Ehrke
- *
- * @author Georg Ehrke <oc.list@georgehrke.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCA\UserStatus\Db;
 
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\IDBConnection;
@@ -75,8 +59,9 @@ class UserStatusMapper extends QBMapper {
 		$qb
 			->select('*')
 			->from($this->tableName)
-			->orderBy('status_timestamp', 'DESC')
+			->orderBy('status_message_timestamp', 'DESC')
 			->where($qb->expr()->andX(
+				$qb->expr()->neq('status_message_timestamp', $qb->createNamedParameter(0, IQueryBuilder::PARAM_INT), IQueryBuilder::PARAM_INT),
 				$qb->expr()->orX(
 					$qb->expr()->notIn('status', $qb->createNamedParameter([IUserStatus::ONLINE, IUserStatus::AWAY, IUserStatus::OFFLINE], IQueryBuilder::PARAM_STR_ARRAY)),
 					$qb->expr()->isNotNull('message_id'),
@@ -99,9 +84,9 @@ class UserStatusMapper extends QBMapper {
 	/**
 	 * @param string $userId
 	 * @return UserStatus
-	 * @throws \OCP\AppFramework\Db\DoesNotExistException
+	 * @throws DoesNotExistException
 	 */
-	public function findByUserId(string $userId, bool $isBackup = false):UserStatus {
+	public function findByUserId(string $userId, bool $isBackup = false): UserStatus {
 		$qb = $this->db->getQueryBuilder();
 		$qb
 			->select('*')
@@ -142,7 +127,7 @@ class UserStatusMapper extends QBMapper {
 				$qb->expr()->eq('status', $qb->createNamedParameter(IUserStatus::ONLINE))
 			));
 
-		$qb->execute();
+		$qb->executeStatement();
 	}
 
 	/**
@@ -156,7 +141,7 @@ class UserStatusMapper extends QBMapper {
 			->where($qb->expr()->isNotNull('clear_at'))
 			->andWhere($qb->expr()->lte('clear_at', $qb->createNamedParameter($timestamp, IQueryBuilder::PARAM_INT)));
 
-		$qb->execute();
+		$qb->executeStatement();
 	}
 
 

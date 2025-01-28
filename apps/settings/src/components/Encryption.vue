@@ -1,27 +1,10 @@
 <!--
-	- @copyright 2022 Carl Schwan <carl@carlschwan.eu>
-	-
-	- @author Carl Schwan <carl@carlschwan.eu>
-	-
-	- @license GNU AGPL version 3 or any later version
-	-
-	- This program is free software: you can redistribute it and/or modify
-	- it under the terms of the GNU Affero General Public License as
-	- published by the Free Software Foundation, either version 3 of the
-	- License, or (at your option) any later version.
-	-
-	- This program is distributed in the hope that it will be useful,
-	- but WITHOUT ANY WARRANTY; without even the implied warranty of
-	- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-	- GNU Affero General Public License for more details.
-	-
-	- You should have received a copy of the GNU Affero General Public License
-	- along with this program. If not, see <http://www.gnu.org/licenses/>.
-	-
+  - SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
 <template>
-	<NcSettingsSection :title="t('settings', 'Server-side encryption')"
+	<NcSettingsSection :name="t('settings', 'Server-side encryption')"
 		:description="t('settings', 'Server-side encryption makes it possible to encrypt files which are uploaded to this server. This comes with limitations like a performance penalty, so enable this only if needed.')"
 		:doc-url="encryptionAdminDoc">
 		<NcCheckboxRadioSwitch :checked="encryptionEnabled || shouldDisplayWarning"
@@ -70,28 +53,32 @@
 				</template>
 			</div>
 
-			<div v-else-if="externalBackendsEnabled" v-html="migrationMessage" />
+			<div v-else-if="externalBackendsEnabled">
+				{{
+					t(
+						'settings',
+						'You need to migrate your encryption keys from the old encryption (ownCloud <= 8.0) to the new one. Please enable the "Default encryption module" and run {command}',
+						{ command: '"occ encryption:migrate"' },
+					)
+				}}
+			</div>
 		</div>
 	</NcSettingsSection>
 </template>
 
 <script>
-import axios from '@nextcloud/axios'
-import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch'
-import NcButton from '@nextcloud/vue/dist/Components/NcButton'
-import NcSettingsSection from '@nextcloud/vue/dist/Components/NcSettingsSection'
+import { showError } from '@nextcloud/dialogs'
 import { loadState } from '@nextcloud/initial-state'
-import { getLoggerBuilder } from '@nextcloud/logger'
-
 import { generateOcsUrl } from '@nextcloud/router'
 import { confirmPassword } from '@nextcloud/password-confirmation'
-import '@nextcloud/password-confirmation/dist/style.css'
-import { showError } from '@nextcloud/dialogs'
+import axios from '@nextcloud/axios'
+import NcCheckboxRadioSwitch from '@nextcloud/vue/dist/Components/NcCheckboxRadioSwitch.js'
+import NcButton from '@nextcloud/vue/dist/Components/NcButton.js'
+import NcSettingsSection from '@nextcloud/vue/dist/Components/NcSettingsSection.js'
 
-const logger = getLoggerBuilder()
-	.setApp('settings')
-	.detectUser()
-	.build()
+import logger from '../logger'
+
+import '@nextcloud/password-confirmation/dist/style.css'
 
 export default {
 	name: 'Encryption',
@@ -110,15 +97,8 @@ export default {
 			encryptionModules,
 			shouldDisplayWarning: false,
 			migrating: false,
-			defaultCheckedModule: Object.entries(encryptionModules).find((module) => module[1].default)[0],
+			defaultCheckedModule: Object.entries(encryptionModules).find((module) => module[1].default)?.[0],
 		}
-	},
-	computed: {
-		migrationMessage() {
-			return t('settings', 'You need to migrate your encryption keys from the old encryption (ownCloud <= 8.0) to the new one. Please enable the "Default encryption module" and run {command}', {
-				command: '"occ encryption:migrate"',
-			})
-		},
 	},
 	methods: {
 		displayWarning() {
@@ -137,10 +117,9 @@ export default {
 				key,
 			})
 
-			const stringValue = value ? 'yes' : 'no'
 			try {
 				const { data } = await axios.post(url, {
-					value: stringValue,
+					value,
 				})
 				this.handleResponse({
 					status: data.ocs?.meta?.status,
@@ -157,7 +136,7 @@ export default {
 		},
 		async enableEncryption() {
 			this.encryptionEnabled = true
-			await this.update('encryption_enabled', true)
+			await this.update('encryption_enabled', 'yes')
 		},
 		async handleResponse({ status, errorMessage, error }) {
 			if (status !== 'ok') {
@@ -190,7 +169,7 @@ export default {
 	color: var(--color-text-light);
 	background-color: var(--note-background);
 	border: 1px solid var(--color-border);
-	border-left: 4px solid var(--note-theme);
+	border-inline-start: 4px solid var(--note-theme);
 	border-radius: var(--border-radius);
 	box-shadow: rgba(43, 42, 51, 0.05) 0px 1px 2px 0px;
 	margin: 1rem 0;
@@ -200,7 +179,7 @@ export default {
 
 li {
 	list-style-type: initial;
-	margin-left: 1rem;
+	margin-inline-start: 1rem;
 	padding: 0.25rem 0;
 }
 

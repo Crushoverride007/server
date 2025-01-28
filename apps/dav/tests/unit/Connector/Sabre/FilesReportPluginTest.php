@@ -1,38 +1,21 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\Connector\Sabre;
 
 use OC\Files\View;
 use OCA\DAV\Connector\Sabre\Directory;
+use OCA\DAV\Connector\Sabre\FilesPlugin;
 use OCA\DAV\Connector\Sabre\FilesReportPlugin as FilesReportPluginImplementation;
 use OCP\App\IAppManager;
 use OCP\Files\File;
 use OCP\Files\FileInfo;
 use OCP\Files\Folder;
+use OCP\Files\IFilenameValidator;
 use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IPreview;
@@ -44,46 +27,27 @@ use OCP\IUserSession;
 use OCP\SystemTag\ISystemTag;
 use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\ISystemTagObjectMapper;
+use OCP\SystemTag\TagNotFoundException;
+use PHPUnit\Framework\MockObject\MockObject;
 use Sabre\DAV\INode;
 use Sabre\DAV\Tree;
 use Sabre\HTTP\ResponseInterface;
 
 class FilesReportPluginTest extends \Test\TestCase {
-	/** @var \Sabre\DAV\Server|\PHPUnit\Framework\MockObject\MockObject */
-	private $server;
 
-	/** @var \Sabre\DAV\Tree|\PHPUnit\Framework\MockObject\MockObject */
-	private $tree;
-
-	/** @var ISystemTagObjectMapper|\PHPUnit\Framework\MockObject\MockObject */
-	private $tagMapper;
-
-	/** @var ISystemTagManager|\PHPUnit\Framework\MockObject\MockObject */
-	private $tagManager;
-
-	/** @var ITags|\PHPUnit\Framework\MockObject\MockObject */
-	private $privateTags;
-
-	/** @var  \OCP\IUserSession */
-	private $userSession;
-
-	/** @var FilesReportPluginImplementation */
-	private $plugin;
-
-	/** @var View|\PHPUnit\Framework\MockObject\MockObject **/
-	private $view;
-
-	/** @var IGroupManager|\PHPUnit\Framework\MockObject\MockObject **/
-	private $groupManager;
-
-	/** @var Folder|\PHPUnit\Framework\MockObject\MockObject **/
-	private $userFolder;
-
-	/** @var IPreview|\PHPUnit\Framework\MockObject\MockObject * */
-	private $previewManager;
-
-	/** @var IAppManager|\PHPUnit\Framework\MockObject\MockObject * */
-	private $appManager;
+	private \Sabre\DAV\Server&MockObject $server;
+	private Tree&MockObject $tree;
+	private ISystemTagObjectMapper&MockObject $tagMapper;
+	private ISystemTagManager&MockObject $tagManager;
+	private ITags&MockObject $privateTags;
+	private ITagManager&MockObject $privateTagManager;
+	private IUserSession&MockObject $userSession;
+	private FilesReportPluginImplementation $plugin;
+	private View&MockObject $view;
+	private IGroupManager&MockObject $groupManager;
+	private Folder&MockObject $userFolder;
+	private IPreview&MockObject $previewManager;
+	private IAppManager&MockObject $appManager;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -97,7 +61,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 
 		$this->server = $this->getMockBuilder('\Sabre\DAV\Server')
 			->setConstructorArgs([$this->tree])
-			->setMethods(['getRequestUri', 'getBaseUri'])
+			->onlyMethods(['getRequestUri', 'getBaseUri'])
 			->getMock();
 
 		$this->server->expects($this->any())
@@ -124,8 +88,8 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->tagMapper = $this->createMock(ISystemTagObjectMapper::class);
 		$this->userSession = $this->createMock(IUserSession::class);
 		$this->privateTags = $this->createMock(ITags::class);
-		$privateTagManager = $this->createMock(ITagManager::class);
-		$privateTagManager->expects($this->any())
+		$this->privateTagManager = $this->createMock(ITagManager::class);
+		$this->privateTagManager->expects($this->any())
 			->method('load')
 			->with('files')
 			->willReturn($this->privateTags);
@@ -145,7 +109,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 			$this->view,
 			$this->tagManager,
 			$this->tagMapper,
-			$privateTagManager,
+			$this->privateTagManager,
 			$this->userSession,
 			$this->groupManager,
 			$this->userFolder,
@@ -153,7 +117,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 		);
 	}
 
-	public function testOnReportInvalidNode() {
+	public function testOnReportInvalidNode(): void {
 		$path = 'totally/unrelated/13';
 
 		$this->tree->expects($this->any())
@@ -173,7 +137,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->assertNull($this->plugin->onReport(FilesReportPluginImplementation::REPORT_NAME, [], '/' . $path));
 	}
 
-	public function testOnReportInvalidReportName() {
+	public function testOnReportInvalidReportName(): void {
 		$path = 'test';
 
 		$this->tree->expects($this->any())
@@ -193,7 +157,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->assertNull($this->plugin->onReport('{whoever}whatever', [], '/' . $path));
 	}
 
-	public function testOnReport() {
+	public function testOnReport(): void {
 		$path = 'test';
 
 		$parameters = [
@@ -216,15 +180,6 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
-
-		$this->tagMapper->expects($this->at(0))
-			->method('getObjectIdsForTags')
-			->with('123', 'files')
-			->willReturn(['111', '222']);
-		$this->tagMapper->expects($this->at(1))
-			->method('getObjectIdsForTags')
-			->with('456', 'files')
-			->willReturn(['111', '222', '333']);
 
 		$reportTargetNode = $this->getMockBuilder(Directory::class)
 			->disableOriginalConstructor()
@@ -253,21 +208,45 @@ class FilesReportPluginTest extends \Test\TestCase {
 			->with('/' . $path)
 			->willReturn($reportTargetNode);
 
-		$filesNode1 = $this->getMockBuilder(Folder::class)
-			->disableOriginalConstructor()
-			->getMock();
-		$filesNode2 = $this->getMockBuilder(File::class)
-			->disableOriginalConstructor()
-			->getMock();
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
 
-		$this->userFolder->expects($this->at(0))
-			->method('getById')
-			->with('111')
-			->willReturn([$filesNode1]);
-		$this->userFolder->expects($this->at(1))
-			->method('getById')
-			->with('222')
-			->willReturn([$filesNode2]);
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456'])
+			->willReturn([$tag123, $tag456]);
+
+		$this->userFolder->expects($this->exactly(2))
+			->method('searchBySystemTag')
+			->withConsecutive(
+				['OneTwoThree'],
+				['FourFiveSix'],
+			)
+			->willReturnOnConsecutiveCalls(
+				[$filesNode1],
+				[$filesNode2],
+			);
 
 		$this->server->expects($this->any())
 			->method('getRequestUri')
@@ -278,7 +257,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->assertFalse($this->plugin->onReport(FilesReportPluginImplementation::REPORT_NAME, $parameters, '/' . $path));
 	}
 
-	public function testFindNodesByFileIdsRoot() {
+	public function testFindNodesByFileIdsRoot(): void {
 		$filesNode1 = $this->getMockBuilder(Folder::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -300,16 +279,18 @@ class FilesReportPluginTest extends \Test\TestCase {
 			->method('getPath')
 			->willReturn('/');
 
-		$this->userFolder->expects($this->at(0))
-			->method('getById')
-			->with('111')
-			->willReturn([$filesNode1]);
-		$this->userFolder->expects($this->at(1))
-			->method('getById')
-			->with('222')
-			->willReturn([$filesNode2]);
+		$this->userFolder->expects($this->exactly(2))
+			->method('getFirstNodeById')
+			->withConsecutive(
+				['111'],
+				['222'],
+			)
+			->willReturnOnConsecutiveCalls(
+				$filesNode1,
+				$filesNode2,
+			);
 
-		/** @var \OCA\DAV\Connector\Sabre\Directory|\PHPUnit\Framework\MockObject\MockObject $reportTargetNode */
+		/** @var Directory&MockObject $reportTargetNode */
 		$result = $this->plugin->findNodesByFileIds($reportTargetNode, ['111', '222']);
 
 		$this->assertCount(2, $result);
@@ -319,7 +300,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->assertEquals('second node', $result[1]->getName());
 	}
 
-	public function testFindNodesByFileIdsSubDir() {
+	public function testFindNodesByFileIdsSubDir(): void {
 		$filesNode1 = $this->getMockBuilder(Folder::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -346,21 +327,23 @@ class FilesReportPluginTest extends \Test\TestCase {
 			->disableOriginalConstructor()
 			->getMock();
 
-		$this->userFolder->expects($this->at(0))
+		$this->userFolder->expects($this->once())
 			->method('get')
 			->with('/sub1/sub2')
 			->willReturn($subNode);
 
-		$subNode->expects($this->at(0))
-			->method('getById')
-			->with('111')
-			->willReturn([$filesNode1]);
-		$subNode->expects($this->at(1))
-			->method('getById')
-			->with('222')
-			->willReturn([$filesNode2]);
+		$subNode->expects($this->exactly(2))
+			->method('getFirstNodeById')
+			->withConsecutive(
+				['111'],
+				['222'],
+			)
+			->willReturnOnConsecutiveCalls(
+				$filesNode1,
+				$filesNode2,
+			);
 
-		/** @var \OCA\DAV\Connector\Sabre\Directory|\PHPUnit\Framework\MockObject\MockObject $reportTargetNode */
+		/** @var Directory&MockObject $reportTargetNode */
 		$result = $this->plugin->findNodesByFileIds($reportTargetNode, ['111', '222']);
 
 		$this->assertCount(2, $result);
@@ -370,7 +353,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->assertEquals('second node', $result[1]->getName());
 	}
 
-	public function testPrepareResponses() {
+	public function testPrepareResponses(): void {
 		$requestedProps = ['{DAV:}getcontentlength', '{http://owncloud.org/ns}fileid', '{DAV:}resourcetype'];
 
 		$fileInfo = $this->createMock(FileInfo::class);
@@ -405,22 +388,22 @@ class FilesReportPluginTest extends \Test\TestCase {
 			->disableOriginalConstructor()
 			->getMock();
 
+		$validator = $this->createMock(IFilenameValidator::class);
+
 		$this->server->addPlugin(
-			new \OCA\DAV\Connector\Sabre\FilesPlugin(
+			new FilesPlugin(
 				$this->tree,
 				$config,
 				$this->createMock(IRequest::class),
 				$this->previewManager,
-				$this->createMock(IUserSession::class)
+				$this->createMock(IUserSession::class),
+				$validator,
 			)
 		);
 		$this->plugin->initialize($this->server);
 		$responses = $this->plugin->prepareResponses('/files/username', $requestedProps, [$node1, $node2]);
 
 		$this->assertCount(2, $responses);
-
-		$this->assertEquals(200, $responses[0]->getHttpStatus());
-		$this->assertEquals(200, $responses[1]->getHttpStatus());
 
 		$this->assertEquals('http://example.com/owncloud/remote.php/dav/files/username/node1', $responses[0]->getHref());
 		$this->assertEquals('http://example.com/owncloud/remote.php/dav/files/username/sub/node2', $responses[1]->getHref());
@@ -439,116 +422,288 @@ class FilesReportPluginTest extends \Test\TestCase {
 		$this->assertCount(0, $props2[200]['{DAV:}resourcetype']->getValue());
 	}
 
-	public function testProcessFilterRulesSingle() {
+	public function testProcessFilterRulesSingle(): void {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
-
-		$this->tagMapper->expects($this->exactly(1))
-			->method('getObjectIdsForTags')
-			->withConsecutive(
-				['123', 'files']
-			)
-			->willReturnMap([
-				['123', 'files', 0, '', ['111', '222']],
-			]);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
 		];
 
-		$this->assertEquals(['111', '222'], $this->invokePrivate($this->plugin, 'processFilterRules', [$rules]));
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123'])
+			->willReturn([$tag123]);
+
+		$this->userFolder->expects($this->once())
+			->method('searchBySystemTag')
+			->with('OneTwoThree')
+			->willReturn([$filesNode1, $filesNode2]);
+
+		$this->assertEquals([$filesNode1, $filesNode2], $this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, 0, 0]));
 	}
 
-	public function testProcessFilterRulesAndCondition() {
+	public function testProcessFilterRulesAndCondition(): void {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
 
-		$this->tagMapper->expects($this->exactly(2))
-			->method('getObjectIdsForTags')
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode1->expects($this->any())
+			->method('getId')
+			->willReturn(111);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+		$filesNode2->expects($this->any())
+			->method('getId')
+			->willReturn(222);
+		$filesNode3 = $this->createMock(File::class);
+		$filesNode3->expects($this->any())
+			->method('getSize')
+			->willReturn(14);
+		$filesNode3->expects($this->any())
+			->method('getId')
+			->willReturn(333);
+
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456'])
+			->willReturn([$tag123, $tag456]);
+
+		$this->userFolder->expects($this->exactly(2))
+			->method('searchBySystemTag')
 			->withConsecutive(
-				['123', 'files'],
-				['456', 'files']
+				['OneTwoThree'],
+				['FourFiveSix'],
 			)
-			->willReturnMap([
-				['123', 'files', 0, '', ['111', '222']],
-				['456', 'files', 0, '', ['222', '333']],
-			]);
+			->willReturnOnConsecutiveCalls(
+				[$filesNode1, $filesNode2],
+				[$filesNode2, $filesNode3],
+			);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
 		];
 
-		$this->assertEquals(['222'], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals([$filesNode2], array_values($this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null])));
 	}
 
-	public function testProcessFilterRulesAndConditionWithOneEmptyResult() {
+	public function testProcessFilterRulesAndConditionWithOneEmptyResult(): void {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
 
-		$this->tagMapper->expects($this->exactly(2))
-			->method('getObjectIdsForTags')
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode1->expects($this->any())
+			->method('getId')
+			->willReturn(111);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+		$filesNode2->expects($this->any())
+			->method('getId')
+			->willReturn(222);
+
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456'])
+			->willReturn([$tag123, $tag456]);
+
+		$this->userFolder->expects($this->exactly(2))
+			->method('searchBySystemTag')
 			->withConsecutive(
-				['123', 'files'],
-				['456', 'files']
+				['OneTwoThree'],
+				['FourFiveSix'],
 			)
-			->willReturnMap([
-				['123', 'files', 0, '', ['111', '222']],
-				['456', 'files', 0, '', []],
-			]);
+			->willReturnOnConsecutiveCalls(
+				[$filesNode1, $filesNode2],
+				[],
+			);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
 		];
 
-		$this->assertEquals([], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals([], $this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null]));
 	}
 
-	public function testProcessFilterRulesAndConditionWithFirstEmptyResult() {
+	public function testProcessFilterRulesAndConditionWithFirstEmptyResult(): void {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
 
-		$this->tagMapper->expects($this->exactly(1))
-			->method('getObjectIdsForTags')
-			->withConsecutive(
-				['123', 'files'],
-				['456', 'files']
-			)
-			->willReturnMap([
-				['123', 'files', 0, '', []],
-				['456', 'files', 0, '', ['111', '222']],
-			]);
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode1->expects($this->any())
+			->method('getId')
+			->willReturn(111);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+		$filesNode2->expects($this->any())
+			->method('getId')
+			->willReturn(222);
+
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456'])
+			->willReturn([$tag123, $tag456]);
+
+		$this->userFolder->expects($this->once())
+			->method('searchBySystemTag')
+			->with('OneTwoThree')
+			->willReturnOnConsecutiveCalls(
+				[],
+				[$filesNode1, $filesNode2],
+			);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
 		];
 
-		$this->assertEquals([], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals([], $this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null]));
 	}
 
-	public function testProcessFilterRulesAndConditionWithEmptyMidResult() {
+	public function testProcessFilterRulesAndConditionWithEmptyMidResult(): void {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
 
-		$this->tagMapper->expects($this->exactly(2))
-			->method('getObjectIdsForTags')
-			->withConsecutive(
-				['123', 'files'],
-				['456', 'files'],
-				['789', 'files']
-			)
-			->willReturnMap([
-				['123', 'files', 0, '', ['111', '222']],
-				['456', 'files', 0, '', ['333']],
-				['789', 'files', 0, '', ['111', '222']],
-			]);
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode1->expects($this->any())
+			->method('getId')
+			->willReturn(111);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+		$filesNode2->expects($this->any())
+			->method('getId')
+			->willReturn(222);
+		$filesNode3 = $this->createMock(Folder::class);
+		$filesNode3->expects($this->any())
+			->method('getSize')
+			->willReturn(13);
+		$filesNode3->expects($this->any())
+			->method('getId')
+			->willReturn(333);
+
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag789 = $this->createMock(ISystemTag::class);
+		$tag789->expects($this->any())
+			->method('getName')
+			->willReturn('SevenEightNein');
+		$tag789->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456', '789'])
+			->willReturn([$tag123, $tag456, $tag789]);
+
+		$this->userFolder->expects($this->exactly(2))
+			->method('searchBySystemTag')
+			->withConsecutive(['OneTwoThree'], ['FourFiveSix'], ['SevenEightNein'])
+			->willReturnOnConsecutiveCalls(
+				[$filesNode1, $filesNode2],
+				[$filesNode3],
+				[$filesNode1, $filesNode2],
+			);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
@@ -556,144 +711,188 @@ class FilesReportPluginTest extends \Test\TestCase {
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '789'],
 		];
 
-		$this->assertEquals([], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals([], array_values($this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null])));
 	}
 
-	public function testProcessFilterRulesInvisibleTagAsAdmin() {
+	public function testProcessFilterRulesInvisibleTagAsAdmin(): void {
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(true);
 
-		$tag1 = $this->getMockBuilder(ISystemTag::class)
-			->disableOriginalConstructor()
-			->getMock();
-		$tag1->expects($this->any())
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode1->expects($this->any())
 			->method('getId')
-			->willReturn('123');
-		$tag1->expects($this->any())
+			->willReturn(111);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+		$filesNode2->expects($this->any())
+			->method('getId')
+			->willReturn(222);
+		$filesNode3 = $this->createMock(Folder::class);
+		$filesNode3->expects($this->any())
+			->method('getSize')
+			->willReturn(13);
+		$filesNode3->expects($this->any())
+			->method('getId')
+			->willReturn(333);
+
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
 			->method('isUserVisible')
 			->willReturn(true);
-
-		$tag2 = $this->getMockBuilder(ISystemTag::class)
-			->disableOriginalConstructor()
-			->getMock();
-		$tag2->expects($this->any())
-			->method('getId')
-			->willReturn('123');
-		$tag2->expects($this->any())
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
 			->method('isUserVisible')
 			->willReturn(false);
 
-		// no need to fetch tags to check permissions
-		$this->tagManager->expects($this->never())
-			->method('getTagsByIds');
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456'])
+			->willReturn([$tag123, $tag456]);
 
-		$this->tagMapper->expects($this->at(0))
-			->method('getObjectIdsForTags')
-			->with('123')
-			->willReturn(['111', '222']);
-		$this->tagMapper->expects($this->at(1))
-			->method('getObjectIdsForTags')
-			->with('456')
-			->willReturn(['222', '333']);
+		$this->userFolder->expects($this->exactly(2))
+			->method('searchBySystemTag')
+			->withConsecutive(['OneTwoThree'], ['FourFiveSix'])
+			->willReturnOnConsecutiveCalls(
+				[$filesNode1, $filesNode2],
+				[$filesNode2, $filesNode3],
+			);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
 		];
 
-		$this->assertEquals(['222'], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals([$filesNode2], array_values($this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null])));
 	}
 
 
-	public function testProcessFilterRulesInvisibleTagAsUser() {
-		$this->expectException(\OCP\SystemTag\TagNotFoundException::class);
+	public function testProcessFilterRulesInvisibleTagAsUser(): void {
+		$this->expectException(TagNotFoundException::class);
 
 		$this->groupManager->expects($this->any())
 			->method('isAdmin')
 			->willReturn(false);
 
-		$tag1 = $this->getMockBuilder(ISystemTag::class)
-			->disableOriginalConstructor()
-			->getMock();
+		$tag123 = $this->createMock(ISystemTag::class);
+		$tag123->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
+		$tag123->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(true);
+		$tag456 = $this->createMock(ISystemTag::class);
+		$tag456->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
+		$tag456->expects($this->any())
+			->method('isUserVisible')
+			->willReturn(false);
+
+		$this->tagManager->expects($this->once())
+			->method('getTagsByIds')
+			->with(['123', '456'])
+			->willThrowException(new TagNotFoundException());
+
+		$this->userFolder->expects($this->never())
+			->method('searchBySystemTag');
+
+		$rules = [
+			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
+			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
+		];
+
+		$this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null]);
+	}
+
+	public function testProcessFilterRulesVisibleTagAsUser(): void {
+		$this->groupManager->expects($this->any())
+			->method('isAdmin')
+			->willReturn(false);
+
+		$tag1 = $this->createMock(ISystemTag::class);
 		$tag1->expects($this->any())
 			->method('getId')
 			->willReturn('123');
 		$tag1->expects($this->any())
 			->method('isUserVisible')
 			->willReturn(true);
+		$tag1->expects($this->any())
+			->method('getName')
+			->willReturn('OneTwoThree');
 
-		$tag2 = $this->getMockBuilder(ISystemTag::class)
-			->disableOriginalConstructor()
-			->getMock();
+		$tag2 = $this->createMock(ISystemTag::class);
 		$tag2->expects($this->any())
 			->method('getId')
 			->willReturn('123');
 		$tag2->expects($this->any())
 			->method('isUserVisible')
-			->willReturn(false); // invisible
+			->willReturn(true);
+		$tag2->expects($this->any())
+			->method('getName')
+			->willReturn('FourFiveSix');
 
 		$this->tagManager->expects($this->once())
 			->method('getTagsByIds')
 			->with(['123', '456'])
 			->willReturn([$tag1, $tag2]);
 
-		$rules = [
-			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
-			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
-		];
-
-		$this->invokePrivate($this->plugin, 'processFilterRules', [$rules]);
-	}
-
-	public function testProcessFilterRulesVisibleTagAsUser() {
-		$this->groupManager->expects($this->any())
-			->method('isAdmin')
-			->willReturn(false);
-
-		$tag1 = $this->getMockBuilder(ISystemTag::class)
-			->disableOriginalConstructor()
-			->getMock();
-		$tag1->expects($this->any())
+		$filesNode1 = $this->createMock(File::class);
+		$filesNode1->expects($this->any())
 			->method('getId')
-			->willReturn('123');
-		$tag1->expects($this->any())
-			->method('isUserVisible')
-			->willReturn(true);
-
-		$tag2 = $this->getMockBuilder(ISystemTag::class)
-			->disableOriginalConstructor()
-			->getMock();
-		$tag2->expects($this->any())
+			->willReturn(111);
+		$filesNode1->expects($this->any())
+			->method('getSize')
+			->willReturn(12);
+		$filesNode2 = $this->createMock(Folder::class);
+		$filesNode2->expects($this->any())
 			->method('getId')
-			->willReturn('123');
-		$tag2->expects($this->any())
-			->method('isUserVisible')
-			->willReturn(true);
+			->willReturn(222);
+		$filesNode2->expects($this->any())
+			->method('getSize')
+			->willReturn(10);
+		$filesNode3 = $this->createMock(Folder::class);
+		$filesNode3->expects($this->any())
+			->method('getId')
+			->willReturn(333);
+		$filesNode3->expects($this->any())
+			->method('getSize')
+			->willReturn(33);
 
 		$this->tagManager->expects($this->once())
 			->method('getTagsByIds')
 			->with(['123', '456'])
 			->willReturn([$tag1, $tag2]);
 
-		$this->tagMapper->expects($this->at(0))
-			->method('getObjectIdsForTags')
-			->with('123')
-			->willReturn(['111', '222']);
-		$this->tagMapper->expects($this->at(1))
-			->method('getObjectIdsForTags')
-			->with('456')
-			->willReturn(['222', '333']);
+		// main assertion: only user visible tags are being passed through.
+		$this->userFolder->expects($this->exactly(2))
+			->method('searchBySystemTag')
+			->withConsecutive(['OneTwoThree'], ['FourFiveSix'])
+			->willReturnOnConsecutiveCalls(
+				[$filesNode1, $filesNode2],
+				[$filesNode2, $filesNode3],
+			);
 
 		$rules = [
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '123'],
 			['name' => '{http://owncloud.org/ns}systemtag', 'value' => '456'],
 		];
 
-		$this->assertEquals(['222'], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals([$filesNode2], array_values($this->invokePrivate($this->plugin, 'processFilterRulesForFileNodes', [$rules, null, null])));
 	}
 
-	public function testProcessFavoriteFilter() {
+	public function testProcessFavoriteFilter(): void {
 		$rules = [
 			['name' => '{http://owncloud.org/ns}favorite', 'value' => '1'],
 		];
@@ -702,7 +901,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 			->method('getFavorites')
 			->willReturn(['456', '789']);
 
-		$this->assertEquals(['456', '789'], array_values($this->invokePrivate($this->plugin, 'processFilterRules', [$rules])));
+		$this->assertEquals(['456', '789'], array_values($this->invokePrivate($this->plugin, 'processFilterRulesForFileIDs', [$rules])));
 	}
 
 	public function filesBaseUriProvider() {
@@ -718,7 +917,7 @@ class FilesReportPluginTest extends \Test\TestCase {
 	/**
 	 * @dataProvider filesBaseUriProvider
 	 */
-	public function testFilesBaseUri($uri, $reportPath, $expectedUri) {
+	public function testFilesBaseUri($uri, $reportPath, $expectedUri): void {
 		$this->assertEquals($expectedUri, $this->invokePrivate($this->plugin, 'getFilesBaseUri', [$uri, $reportPath]));
 	}
 }

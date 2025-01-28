@@ -1,29 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Kenneth Newwood <kenneth@newwood.name>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2017-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Encryption\Crypto;
 
@@ -34,7 +14,10 @@ use OCA\Encryption\Users\Setup;
 use OCA\Encryption\Util;
 use OCP\IConfig;
 use OCP\IL10N;
+use OCP\IUser;
 use OCP\IUserManager;
+use OCP\L10N\IFactory;
+use OCP\Mail\Headers\AutoSubmitted;
 use OCP\Mail\IMailer;
 use OCP\Security\ISecureRandom;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -46,79 +29,28 @@ use Symfony\Component\Console\Question\ConfirmationQuestion;
 
 class EncryptAll {
 
-	/** @var Setup */
-	protected $userSetup;
-
-	/** @var IUserManager */
-	protected $userManager;
-
-	/** @var View */
-	protected $rootView;
-
-	/** @var KeyManager */
-	protected $keyManager;
-
-	/** @var Util */
-	protected $util;
-
-	/** @var array  */
+	/** @var array */
 	protected $userPasswords;
 
-	/** @var  IConfig */
-	protected $config;
-
-	/** @var IMailer */
-	protected $mailer;
-
-	/** @var  IL10N */
-	protected $l;
-
-	/** @var  QuestionHelper */
-	protected $questionHelper;
-
-	/** @var  OutputInterface */
+	/** @var OutputInterface */
 	protected $output;
 
-	/** @var  InputInterface */
+	/** @var InputInterface */
 	protected $input;
 
-	/** @var ISecureRandom */
-	protected $secureRandom;
-
-	/**
-	 * @param Setup $userSetup
-	 * @param IUserManager $userManager
-	 * @param View $rootView
-	 * @param KeyManager $keyManager
-	 * @param Util $util
-	 * @param IConfig $config
-	 * @param IMailer $mailer
-	 * @param IL10N $l
-	 * @param QuestionHelper $questionHelper
-	 * @param ISecureRandom $secureRandom
-	 */
 	public function __construct(
-		Setup $userSetup,
-		IUserManager $userManager,
-		View $rootView,
-		KeyManager $keyManager,
-		Util $util,
-		IConfig $config,
-		IMailer $mailer,
-		IL10N $l,
-		QuestionHelper $questionHelper,
-		ISecureRandom $secureRandom
+		protected Setup $userSetup,
+		protected IUserManager $userManager,
+		protected View $rootView,
+		protected KeyManager $keyManager,
+		protected Util $util,
+		protected IConfig $config,
+		protected IMailer $mailer,
+		protected IL10N $l,
+		protected IFactory $l10nFactory,
+		protected QuestionHelper $questionHelper,
+		protected ISecureRandom $secureRandom,
 	) {
-		$this->userSetup = $userSetup;
-		$this->userManager = $userManager;
-		$this->rootView = $rootView;
-		$this->keyManager = $keyManager;
-		$this->util = $util;
-		$this->config = $config;
-		$this->mailer = $mailer;
-		$this->l = $l;
-		$this->questionHelper = $questionHelper;
-		$this->secureRandom = $secureRandom;
 		// store one time passwords for the users
 		$this->userPasswords = [];
 	}
@@ -227,7 +159,7 @@ class EncryptAll {
 				$userNo++;
 			}
 		}
-		$progress->setMessage("all files encrypted");
+		$progress->setMessage('all files encrypted');
 		$progress->finish();
 	}
 
@@ -413,6 +345,10 @@ class EncryptAll {
 			$progress->advance();
 			if (!empty($password)) {
 				$recipient = $this->userManager->get($uid);
+				if (!$recipient instanceof IUser) {
+					continue;
+				}
+
 				$recipientDisplayName = $recipient->getDisplayName();
 				$to = $recipient->getEMailAddress();
 
@@ -421,20 +357,33 @@ class EncryptAll {
 					continue;
 				}
 
-				$subject = $this->l->t('one-time password for server-side-encryption');
-				[$htmlBody, $textBody] = $this->createMailBody($password);
+				$l = $this->l10nFactory->get('encryption', $this->l10nFactory->getUserLanguage($recipient));
+
+				$template = $this->mailer->createEMailTemplate('encryption.encryptAllPassword', [
+					'user' => $recipient->getUID(),
+					'password' => $password,
+				]);
+
+				$template->setSubject($l->t('one-time password for server-side-encryption'));
+				// 'Hey there,<br><br>The administration enabled server-side-encryption. Your files were encrypted using the password <strong>%s</strong>.<br><br>
+				// Please login to the web interface, go to the section "Basic encryption module" of your personal settings and update your encryption password by entering this password into the "Old log-in password" field and your current login-password.<br><br>'
+				$template->addHeader();
+				$template->addHeading($l->t('Encryption password'));
+				$template->addBodyText(
+					$l->t('The administration enabled server-side-encryption. Your files were encrypted using the password <strong>%s</strong>.', [htmlspecialchars($password)]),
+					$l->t('The administration enabled server-side-encryption. Your files were encrypted using the password "%s".', $password)
+				);
+				$template->addBodyText(
+					$l->t('Please login to the web interface, go to the "Security" section of your personal settings and update your encryption password by entering this password into the "Old login password" field and your current login password.')
+				);
+				$template->addFooter();
 
 				// send it out now
 				try {
 					$message = $this->mailer->createMessage();
-					$message->setSubject($subject);
 					$message->setTo([$to => $recipientDisplayName]);
-					$message->setHtmlBody($htmlBody);
-					$message->setPlainBody($textBody);
-					$message->setFrom([
-						\OCP\Util::getDefaultEmailAddress('admin-noreply')
-					]);
-
+					$message->useTemplate($template);
+					$message->setAutoSubmitted(AutoSubmitted::VALUE_AUTO_GENERATED);
 					$this->mailer->send($message);
 				} catch (\Exception $e) {
 					$noMail[] = $uid;
@@ -457,23 +406,5 @@ class EncryptAll {
 			$table->setRows($rows);
 			$table->render();
 		}
-	}
-
-	/**
-	 * create mail body for plain text and html mail
-	 *
-	 * @param string $password one-time encryption password
-	 * @return array an array of the html mail body and the plain text mail body
-	 */
-	protected function createMailBody($password) {
-		$html = new \OC_Template("encryption", "mail", "");
-		$html->assign('password', $password);
-		$htmlMail = $html->fetchPage();
-
-		$plainText = new \OC_Template("encryption", "altmail", "");
-		$plainText->assign('password', $password);
-		$plainTextMail = $plainText->fetchPage();
-
-		return [$htmlMail, $plainTextMail];
 	}
 }

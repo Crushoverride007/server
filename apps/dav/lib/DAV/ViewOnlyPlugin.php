@@ -1,44 +1,33 @@
 <?php
+
 /**
- * @author Piotr Mrowczynski piotr@owncloud.com
- *
- * @copyright Copyright (c) 2019, ownCloud GmbH
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2022-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2019 ownCloud GmbH
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace OCA\DAV\DAV;
 
 use OCA\DAV\Connector\Sabre\Exception\Forbidden;
 use OCA\DAV\Connector\Sabre\File as DavFile;
+use OCA\Files_Versions\Sabre\VersionFile;
+use OCP\Files\Folder;
 use OCP\Files\NotFoundException;
-use Psr\Log\LoggerInterface;
+use OCP\Files\Storage\ISharedStorage;
+use Sabre\DAV\Exception\NotFound;
 use Sabre\DAV\Server;
 use Sabre\DAV\ServerPlugin;
 use Sabre\HTTP\RequestInterface;
-use Sabre\DAV\Exception\NotFound;
 
 /**
  * Sabre plugin for restricting file share receiver download:
  */
 class ViewOnlyPlugin extends ServerPlugin {
 	private ?Server $server = null;
-	private LoggerInterface $logger;
 
-	public function __construct(LoggerInterface $logger) {
-		$this->logger = $logger;
+	public function __construct(
+		private ?Folder $userFolder,
+	) {
 	}
 
 	/**
@@ -55,6 +44,7 @@ class ViewOnlyPlugin extends ServerPlugin {
 		//Sabre\DAV\CorePlugin::httpGet
 		$this->server->on('method:GET', [$this, 'checkViewOnly'], 90);
 		$this->server->on('method:COPY', [$this, 'checkViewOnly'], 90);
+		$this->server->on('method:MOVE', [$this, 'checkViewOnly'], 90);
 	}
 
 	/**
@@ -70,19 +60,32 @@ class ViewOnlyPlugin extends ServerPlugin {
 		try {
 			assert($this->server !== null);
 			$davNode = $this->server->tree->getNodeForPath($path);
-			if (!($davNode instanceof DavFile)) {
+			if ($davNode instanceof DavFile) {
+				// Restrict view-only to nodes which are shared
+				$node = $davNode->getNode();
+			} elseif ($davNode instanceof VersionFile) {
+				$node = $davNode->getVersion()->getSourceFile();
+				$currentUserId = $this->userFolder?->getOwner()?->getUID();
+				// The version source file is relative to the owner storage.
+				// But we need the node from the current user perspective.
+				if ($node->getOwner()->getUID() !== $currentUserId) {
+					$nodes = $this->userFolder->getById($node->getId());
+					$node = array_pop($nodes);
+					if (!$node) {
+						throw new NotFoundException('Version file not accessible by current user');
+					}
+				}
+			} else {
 				return true;
 			}
-			// Restrict view-only to nodes which are shared
-			$node = $davNode->getNode();
 
 			$storage = $node->getStorage();
 
-			if (!$storage->instanceOfStorage(\OCA\Files_Sharing\SharedStorage::class)) {
+			if (!$storage->instanceOfStorage(ISharedStorage::class)) {
 				return true;
 			}
 			// Extract extra permissions
-			/** @var \OCA\Files_Sharing\SharedStorage $storage */
+			/** @var ISharedStorage $storage */
 			$share = $storage->getShare();
 
 			$attributes = $share->getAttributes();
@@ -93,7 +96,7 @@ class ViewOnlyPlugin extends ServerPlugin {
 			// Check if read-only and on whether permission can download is both set and disabled.
 			$canDownload = $attributes->getAttribute('permissions', 'download');
 			if ($canDownload !== null && !$canDownload) {
-				throw new Forbidden('Access to this resource has been denied because it is in view-only mode.');
+				throw new Forbidden('Access to this shared resource has been denied because its download permission is disabled.');
 			}
 		} catch (NotFound $e) {
 			// File not found

@@ -3,77 +3,46 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2021 Lukas Reschke <lukas@statuscode.ch>
- *
- * @author Lukas Reschke <lukas@statuscode.ch>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Security\RateLimiting\Backend;
 
 use OCP\AppFramework\Utility\ITimeFactory;
+use OCP\DB\Exception;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IConfig;
 use OCP\IDBConnection;
 
 class DatabaseBackend implements IBackend {
 	private const TABLE_NAME = 'ratelimit_entries';
 
-	/** @var IDBConnection */
-	private $dbConnection;
-	/** @var ITimeFactory */
-	private $timeFactory;
-
-	/**
-	 * @param IDBConnection $dbConnection
-	 * @param ITimeFactory $timeFactory
-	 */
 	public function __construct(
-		IDBConnection $dbConnection,
-		ITimeFactory $timeFactory
+		private IConfig $config,
+		private IDBConnection $dbConnection,
+		private ITimeFactory $timeFactory,
 	) {
-		$this->dbConnection = $dbConnection;
-		$this->timeFactory = $timeFactory;
 	}
 
-	/**
-	 * @param string $methodIdentifier
-	 * @param string $userIdentifier
-	 * @return string
-	 */
-	private function hash(string $methodIdentifier,
-						  string $userIdentifier): string {
+	private function hash(
+		string $methodIdentifier,
+		string $userIdentifier,
+	): string {
 		return hash('sha512', $methodIdentifier . $userIdentifier);
 	}
 
 	/**
-	 * @param string $identifier
-	 * @param int $seconds
-	 * @return int
-	 * @throws \OCP\DB\Exception
+	 * @throws Exception
 	 */
 	private function getExistingAttemptCount(
-		string $identifier
+		string $identifier,
 	): int {
 		$currentTime = $this->timeFactory->getDateTime();
 
 		$qb = $this->dbConnection->getQueryBuilder();
 		$qb->delete(self::TABLE_NAME)
 			->where(
-				$qb->expr()->lte('delete_after', $qb->createNamedParameter($currentTime, IQueryBuilder::PARAM_DATE))
+				$qb->expr()->lte('delete_after', $qb->createNamedParameter($currentTime, IQueryBuilder::PARAM_DATETIME_MUTABLE))
 			)
 			->executeStatement();
 
@@ -94,8 +63,10 @@ class DatabaseBackend implements IBackend {
 	/**
 	 * {@inheritDoc}
 	 */
-	public function getAttempts(string $methodIdentifier,
-								string $userIdentifier): int {
+	public function getAttempts(
+		string $methodIdentifier,
+		string $userIdentifier,
+	): int {
 		$identifier = $this->hash($methodIdentifier, $userIdentifier);
 		return $this->getExistingAttemptCount($identifier);
 	}
@@ -103,9 +74,11 @@ class DatabaseBackend implements IBackend {
 	/**
 	 * {@inheritDoc}
 	 */
-	public function registerAttempt(string $methodIdentifier,
-									string $userIdentifier,
-									int $period) {
+	public function registerAttempt(
+		string $methodIdentifier,
+		string $userIdentifier,
+		int $period,
+	): void {
 		$identifier = $this->hash($methodIdentifier, $userIdentifier);
 		$deleteAfter = $this->timeFactory->getDateTime()->add(new \DateInterval("PT{$period}S"));
 
@@ -114,8 +87,13 @@ class DatabaseBackend implements IBackend {
 		$qb->insert(self::TABLE_NAME)
 			->values([
 				'hash' => $qb->createNamedParameter($identifier, IQueryBuilder::PARAM_STR),
-				'delete_after' => $qb->createNamedParameter($deleteAfter, IQueryBuilder::PARAM_DATE),
-			])
-			->executeStatement();
+				'delete_after' => $qb->createNamedParameter($deleteAfter, IQueryBuilder::PARAM_DATETIME_MUTABLE),
+			]);
+
+		if (!$this->config->getSystemValueBool('ratelimit.protection.enabled', true)) {
+			return;
+		}
+
+		$qb->executeStatement();
 	}
 }

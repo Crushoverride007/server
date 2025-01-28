@@ -3,31 +3,12 @@
 declare(strict_types=1);
 
 /**
- * @copyright 2022 Christopher Ng <chrng8@gmail.com>
- *
- * @author Christopher Ng <chrng8@gmail.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCA\DAV\UserMigration;
 
-use function Safe\sort;
-use function Safe\substr;
 use OCA\DAV\AppInfo\Application;
 use OCA\DAV\CardDAV\CardDavBackend;
 use OCA\DAV\CardDAV\Plugin as CardDAVPlugin;
@@ -46,19 +27,15 @@ use Sabre\VObject\Parser\Parser as VObjectParser;
 use Sabre\VObject\Reader as VObjectReader;
 use Sabre\VObject\Splitter\VCard as VCardSplitter;
 use Sabre\VObject\UUIDUtil;
-use Safe\Exceptions\ArrayException;
-use Safe\Exceptions\StringsException;
 use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
+use function sort;
+use function substr;
 
 class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 
 	use TMigratorBasicVersionHandling;
-
-	private CardDavBackend $cardDavBackend;
-
-	private IL10N $l10n;
 
 	private SabreDavServer $sabreDavServer;
 
@@ -73,12 +50,9 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 	private const PATH_ROOT = Application::APP_ID . '/address_books/';
 
 	public function __construct(
-		CardDavBackend $cardDavBackend,
-		IL10N $l10n
+		private CardDavBackend $cardDavBackend,
+		private IL10N $l10n,
 	) {
-		$this->cardDavBackend = $cardDavBackend;
-		$this->l10n = $l10n;
-
 		$root = new RootCollection();
 		$this->sabreDavServer = new SabreDavServer(new CachingTree($root));
 		$this->sabreDavServer->addPlugin(new CardDAVPlugin());
@@ -162,15 +136,18 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 		)));
 	}
 
+	/**
+	 * @throws InvalidAddressBookException
+	 */
 	private function getUniqueAddressBookUri(IUser $user, string $initialAddressBookUri): string {
 		$principalUri = $this->getPrincipalUri($user);
 
-		try {
-			$initialAddressBookUri = substr($initialAddressBookUri, 0, strlen(ContactsMigrator::MIGRATED_URI_PREFIX)) === ContactsMigrator::MIGRATED_URI_PREFIX
-				? $initialAddressBookUri
-				: ContactsMigrator::MIGRATED_URI_PREFIX . $initialAddressBookUri;
-		} catch (StringsException $e) {
-			throw new ContactsMigratorException('Failed to get unique address book URI', 0, $e);
+		$initialAddressBookUri = substr($initialAddressBookUri, 0, strlen(ContactsMigrator::MIGRATED_URI_PREFIX)) === ContactsMigrator::MIGRATED_URI_PREFIX
+			? $initialAddressBookUri
+			: ContactsMigrator::MIGRATED_URI_PREFIX . $initialAddressBookUri;
+
+		if ($initialAddressBookUri === '') {
+			throw new InvalidAddressBookException();
 		}
 
 		$existingAddressBookUris = array_map(
@@ -202,7 +179,7 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 	/**
 	 * {@inheritDoc}
 	 */
-	public function getEstimatedExportSize(IUser $user): int {
+	public function getEstimatedExportSize(IUser $user): int|float {
 		$addressBookExports = $this->getAddressBookExports($user, new NullOutput());
 		$addressBookCount = count($addressBookExports);
 
@@ -217,7 +194,7 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 		// 350B for each contact
 		$size += ($contactsCount * 350) / 1024;
 
-		return (int)ceil($size);
+		return ceil($size);
 	}
 
 	/**
@@ -248,7 +225,7 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 				$exportDestination->addFileContents($exportPath, $this->serializeCards($vCards));
 
 				$metadata = array_filter(['displayName' => $displayName, 'description' => $description]);
-				$exportDestination->addFileContents($metadataExportPath, json_encode($metadata));
+				$exportDestination->addFileContents($metadataExportPath, json_encode($metadata, JSON_THROW_ON_ERROR));
 			}
 		} catch (Throwable $e) {
 			throw new CalendarMigratorException('Could not export address book', 0, $e);
@@ -267,13 +244,15 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 				$vCard->serialize(),
 			);
 		} catch (Throwable $e) {
-			$output->writeln("Error creating contact \"" . ($vCard->FN ?? 'null') . "\" from \"$filename\", skipping…");
+			$output->writeln('Error creating contact "' . ($vCard->FN ?? 'null') . "\" from \"$filename\", skipping…");
 		}
 	}
 
 	/**
 	 * @param array{displayName: string, description?: string} $metadata
 	 * @param VCard[] $vCards
+	 *
+	 * @throws InvalidAddressBookException
 	 */
 	private function importAddressBook(IUser $user, string $filename, string $initialAddressBookUri, array $metadata, array $vCards, OutputInterface $output): void {
 		$principalUri = $this->getPrincipalUri($user);
@@ -303,11 +282,10 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 			fn (string $filename) => pathinfo($filename, PATHINFO_EXTENSION) === ContactsMigrator::METADATA_EXT,
 		);
 
-		try {
-			sort($addressBookImports);
-			sort($metadataImports);
-		} catch (ArrayException $e) {
-			throw new ContactsMigratorException('Failed to sort address book files in ' . ContactsMigrator::PATH_ROOT, 0, $e);
+		$addressBookSort = sort($addressBookImports);
+		$metadataSort = sort($metadataImports);
+		if ($addressBookSort === false || $metadataSort === false) {
+			throw new ContactsMigratorException('Failed to sort address book files in ' . ContactsMigrator::PATH_ROOT);
 		}
 
 		if (count($addressBookImports) !== count($metadataImports)) {
@@ -369,24 +347,29 @@ class ContactsMigrator implements IMigrator, ISizeEstimationMigrator {
 
 			$splitFilename = explode('.', $addressBookFilename, 2);
 			if (count($splitFilename) !== 2) {
-				throw new ContactsMigratorException("Invalid filename \"$addressBookFilename\", expected filename of the format \"<address_book_name>." . ContactsMigrator::FILENAME_EXT . '"');
+				$output->writeln("Invalid filename \"$addressBookFilename\", expected filename of the format \"<address_book_name>." . ContactsMigrator::FILENAME_EXT . '", skipping…');
+				continue;
 			}
 			[$initialAddressBookUri, $ext] = $splitFilename;
 
 			/** @var array{displayName: string, description?: string} $metadata */
 			$metadata = json_decode($importSource->getFileContents($metadataImportPath), true, 512, JSON_THROW_ON_ERROR);
 
-			$this->importAddressBook(
-				$user,
-				$addressBookFilename,
-				$initialAddressBookUri,
-				$metadata,
-				$vCards,
-				$output,
-			);
-
-			foreach ($vCards as $vCard) {
-				$vCard->destroy();
+			try {
+				$this->importAddressBook(
+					$user,
+					$addressBookFilename,
+					$initialAddressBookUri,
+					$metadata,
+					$vCards,
+					$output,
+				);
+			} catch (InvalidAddressBookException $e) {
+				// Allow this exception to skip a failed import
+			} finally {
+				foreach ($vCards as $vCard) {
+					$vCard->destroy();
+				}
 			}
 		}
 	}

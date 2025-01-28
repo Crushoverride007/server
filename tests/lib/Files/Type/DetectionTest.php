@@ -1,22 +1,8 @@
 <?php
 /**
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @copyright Copyright (c) 2015, ownCloud, Inc.
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace Test\Files\Type;
@@ -71,7 +57,7 @@ class DetectionTest extends \Test\TestCase {
 	public function dataDetectContent(): array {
 		return [
 			['/', 'httpd/unix-directory'],
-			//			['/data.tar.gz', 'application/x-gzip'], TODO: fix as it fails hard on php7.4 now
+			['/data.tar.gz', 'application/gzip'],
 			['/data.zip', 'application/zip'],
 			['/testimage.mp3', 'audio/mpeg'],
 			['/testimage.png', 'image/png'],
@@ -91,7 +77,7 @@ class DetectionTest extends \Test\TestCase {
 	public function dataDetect(): array {
 		return [
 			['/', 'httpd/unix-directory'],
-			['/data.tar.gz', 'application/x-gzip'],
+			['/data.tar.gz', 'application/gzip'],
 			['/data.zip', 'application/zip'],
 			['/testimagelarge.svg', 'image/svg+xml'],
 			['/testimage.png', 'image/png'],
@@ -131,7 +117,7 @@ class DetectionTest extends \Test\TestCase {
 		$this->assertEquals($expected, $this->detection->getSecureMimeType($mimeType));
 	}
 
-	public function testMimeTypeIcon() {
+	public function testMimeTypeIcon(): void {
 		if (!class_exists('org\\bovigo\\vfs\\vfsStream')) {
 			$this->markTestSkipped('Package vfsStream not installed');
 		}

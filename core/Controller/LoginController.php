@@ -1,33 +1,11 @@
 <?php
+
+declare(strict_types=1);
+
 /**
- * @copyright Copyright (c) 2017, Sandro Lutz <sandro.lutz@temparus.ch>
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Michael Weimann <mail@michael-weimann.eu>
- * @author Rayn0r <andrew@ilpss8.myfirewall.org>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Core\Controller;
 
@@ -35,80 +13,68 @@ use OC\AppFramework\Http\Request;
 use OC\Authentication\Login\Chain;
 use OC\Authentication\Login\LoginData;
 use OC\Authentication\WebAuthn\Manager as WebAuthnManager;
-use OC\Security\Bruteforce\Throttler;
 use OC\User\Session;
 use OC_App;
+use OCA\User_LDAP\Configuration;
+use OCA\User_LDAP\Helper;
+use OCP\App\IAppManager;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\FrontpageRoute;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\OpenAPI;
+use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\AppFramework\Services\IInitialState;
 use OCP\Defaults;
 use OCP\IConfig;
-use OCP\IInitialStateService;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\IUserManager;
-use OCP\IUserSession;
 use OCP\Notification\IManager;
+use OCP\Security\Bruteforce\IThrottler;
+use OCP\Security\ITrustedDomainHelper;
 use OCP\Util;
 
 class LoginController extends Controller {
 	public const LOGIN_MSG_INVALIDPASSWORD = 'invalidpassword';
 	public const LOGIN_MSG_USERDISABLED = 'userdisabled';
+	public const LOGIN_MSG_CSRFCHECKFAILED = 'csrfCheckFailed';
+	public const LOGIN_MSG_INVALID_ORIGIN = 'invalidOrigin';
 
-	private IUserManager $userManager;
-	private IConfig $config;
-	private ISession $session;
-	/** @var IUserSession|Session */
-	private $userSession;
-	private IURLGenerator $urlGenerator;
-	private Defaults $defaults;
-	private Throttler $throttler;
-	private Chain $loginChain;
-	private IInitialStateService $initialStateService;
-	private WebAuthnManager $webAuthnManager;
-	private IManager $manager;
-	private IL10N $l10n;
-
-	public function __construct(?string $appName,
-								IRequest $request,
-								IUserManager $userManager,
-								IConfig $config,
-								ISession $session,
-								IUserSession $userSession,
-								IURLGenerator $urlGenerator,
-								Defaults $defaults,
-								Throttler $throttler,
-								Chain $loginChain,
-								IInitialStateService $initialStateService,
-								WebAuthnManager $webAuthnManager,
-								IManager $manager,
-								IL10N $l10n) {
+	public function __construct(
+		?string $appName,
+		IRequest $request,
+		private IUserManager $userManager,
+		private IConfig $config,
+		private ISession $session,
+		private Session $userSession,
+		private IURLGenerator $urlGenerator,
+		private Defaults $defaults,
+		private IThrottler $throttler,
+		private IInitialState $initialState,
+		private WebAuthnManager $webAuthnManager,
+		private IManager $manager,
+		private IL10N $l10n,
+		private IAppManager $appManager,
+	) {
 		parent::__construct($appName, $request);
-		$this->userManager = $userManager;
-		$this->config = $config;
-		$this->session = $session;
-		$this->userSession = $userSession;
-		$this->urlGenerator = $urlGenerator;
-		$this->defaults = $defaults;
-		$this->throttler = $throttler;
-		$this->loginChain = $loginChain;
-		$this->initialStateService = $initialStateService;
-		$this->webAuthnManager = $webAuthnManager;
-		$this->manager = $manager;
-		$this->l10n = $l10n;
 	}
 
 	/**
-	 * @NoAdminRequired
-	 * @UseSession
-	 *
 	 * @return RedirectResponse
 	 */
+	#[NoAdminRequired]
+	#[UseSession]
+	#[FrontpageRoute(verb: 'GET', url: '/logout')]
 	public function logout() {
 		$loginToken = $this->request->getCookie('nc_token');
 		if (!is_null($loginToken)) {
@@ -118,13 +84,16 @@ class LoginController extends Controller {
 
 		$response = new RedirectResponse($this->urlGenerator->linkToRouteAbsolute(
 			'core.login.showLoginForm',
-			['clear' => true] // this param the the code in login.js may be removed when the "Clear-Site-Data" is working in the browsers
+			['clear' => true] // this param the code in login.js may be removed when the "Clear-Site-Data" is working in the browsers
 		));
 
 		$this->session->set('clearingExecutionContexts', '1');
 		$this->session->close();
 
-		if (!$this->request->isUserAgent([Request::USER_AGENT_CHROME, Request::USER_AGENT_ANDROID_MOBILE_CHROME])) {
+		if (
+			$this->request->getServerProtocol() === 'https' &&
+			!$this->request->isUserAgent([Request::USER_AGENT_CHROME, Request::USER_AGENT_ANDROID_MOBILE_CHROME])
+		) {
 			$response->addHeader('Clear-Site-Data', '"cache", "storage"');
 		}
 
@@ -132,16 +101,17 @@ class LoginController extends Controller {
 	}
 
 	/**
-	 * @PublicPage
-	 * @NoCSRFRequired
-	 * @UseSession
-	 *
 	 * @param string $user
 	 * @param string $redirect_url
 	 *
 	 * @return TemplateResponse|RedirectResponse
 	 */
-	public function showLoginForm(string $user = null, string $redirect_url = null): Http\Response {
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[UseSession]
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[FrontpageRoute(verb: 'GET', url: '/login')]
+	public function showLoginForm(?string $user = null, ?string $redirect_url = null): Http\Response {
 		if ($this->userSession->isLoggedIn()) {
 			return new RedirectResponse($this->urlGenerator->linkToDefaultPageUrl());
 		}
@@ -155,19 +125,18 @@ class LoginController extends Controller {
 		}
 		if (is_array($loginMessages)) {
 			[$errors, $messages] = $loginMessages;
-			$this->initialStateService->provideInitialState('core', 'loginMessages', $messages);
-			$this->initialStateService->provideInitialState('core', 'loginErrors', $errors);
+			$this->initialState->provideInitialState('loginMessages', $messages);
+			$this->initialState->provideInitialState('loginErrors', $errors);
 		}
 		$this->session->remove('loginMessages');
 
 		if ($user !== null && $user !== '') {
-			$this->initialStateService->provideInitialState('core', 'loginUsername', $user);
+			$this->initialState->provideInitialState('loginUsername', $user);
 		} else {
-			$this->initialStateService->provideInitialState('core', 'loginUsername', '');
+			$this->initialState->provideInitialState('loginUsername', '');
 		}
 
-		$this->initialStateService->provideInitialState(
-			'core',
+		$this->initialState->provideInitialState(
 			'loginAutocomplete',
 			$this->config->getSystemValue('login_form_autocomplete', true) === true
 		);
@@ -175,21 +144,22 @@ class LoginController extends Controller {
 		if (!empty($redirect_url)) {
 			[$url, ] = explode('?', $redirect_url);
 			if ($url !== $this->urlGenerator->linkToRoute('core.login.logout')) {
-				$this->initialStateService->provideInitialState('core', 'loginRedirectUrl', $redirect_url);
+				$this->initialState->provideInitialState('loginRedirectUrl', $redirect_url);
 			}
 		}
 
-		$this->initialStateService->provideInitialState(
-			'core',
+		$this->initialState->provideInitialState(
 			'loginThrottleDelay',
 			$this->throttler->getDelay($this->request->getRemoteAddress())
 		);
 
 		$this->setPasswordResetInitialState($user);
 
-		$this->initialStateService->provideInitialState('core', 'webauthn-available', $this->webAuthnManager->isWebAuthnAvailable());
+		$this->setEmailStates();
 
-		$this->initialStateService->provideInitialState('core', 'hideLoginForm', $this->config->getSystemValueBool('hide_login_form', false));
+		$this->initialState->provideInitialState('webauthn-available', $this->webAuthnManager->isWebAuthnAvailable());
+
+		$this->initialState->provideInitialState('hideLoginForm', $this->config->getSystemValueBool('hide_login_form', false));
 
 		// OpenGraph Support: http://ogp.me/
 		Util::addHeader('meta', ['property' => 'og:title', 'content' => Util::sanitizeHTML($this->defaults->getName())]);
@@ -199,13 +169,17 @@ class LoginController extends Controller {
 		Util::addHeader('meta', ['property' => 'og:type', 'content' => 'website']);
 		Util::addHeader('meta', ['property' => 'og:image', 'content' => $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath('core', 'favicon-touch.png'))]);
 
+		// Add same-origin referrer policy so we can check for valid requests
+		Util::addHeader('meta', ['name' => 'referrer', 'content' => 'same-origin']);
+
 		$parameters = [
 			'alt_login' => OC_App::getAlternativeLogIns(),
 			'pageTitle' => $this->l10n->t('Login'),
 		];
 
-		$this->initialStateService->provideInitialState('core', 'countAlternativeLogins', count($parameters['alt_login']));
-		$this->initialStateService->provideInitialState('core', 'alternativeLogins', $parameters['alt_login']);
+		$this->initialState->provideInitialState('countAlternativeLogins', count($parameters['alt_login']));
+		$this->initialState->provideInitialState('alternativeLogins', $parameters['alt_login']);
+		$this->initialState->provideInitialState('loginTimeout', $this->config->getSystemValueInt('login_form_timeout', 5 * 60));
 
 		return new TemplateResponse(
 			$this->appName,
@@ -227,19 +201,38 @@ class LoginController extends Controller {
 			$user = null;
 		}
 
-		$passwordLink = $this->config->getSystemValue('lost_password_link', '');
+		$passwordLink = $this->config->getSystemValueString('lost_password_link', '');
 
-		$this->initialStateService->provideInitialState(
-			'core',
+		$this->initialState->provideInitialState(
 			'loginResetPasswordLink',
 			$passwordLink
 		);
 
-		$this->initialStateService->provideInitialState(
-			'core',
+		$this->initialState->provideInitialState(
 			'loginCanResetPassword',
 			$this->canResetPassword($passwordLink, $user)
 		);
+	}
+
+	/**
+	 * Sets the initial state of whether or not a user is allowed to login with their email
+	 * initial state is passed in the array of 1 for email allowed and 0 for not allowed
+	 */
+	private function setEmailStates(): void {
+		$emailStates = []; // true: can login with email, false otherwise - default to true
+
+		// check if user_ldap is enabled, and the required classes exist
+		if ($this->appManager->isAppLoaded('user_ldap')
+			&& class_exists(Helper::class)) {
+			$helper = \OCP\Server::get(Helper::class);
+			$allPrefixes = $helper->getServerConfigurationPrefixes();
+			// check each LDAP server the user is connected too
+			foreach ($allPrefixes as $prefix) {
+				$emailConfig = new Configuration($prefix);
+				array_push($emailStates, $emailConfig->__get('ldapLoginFilterEmail'));
+			}
+		}
+		$this->initialState->provideInitialState('emailStates', $emailStates);
 	}
 
 	/**
@@ -274,48 +267,81 @@ class LoginController extends Controller {
 			$location = $this->urlGenerator->getAbsoluteURL($redirectUrl);
 			// Deny the redirect if the URL contains a @
 			// This prevents unvalidated redirects like ?redirect_url=:user@domain.com
-			if (strpos($location, '@') === false) {
+			if (!str_contains($location, '@')) {
 				return new RedirectResponse($location);
 			}
 		}
 		return new RedirectResponse($this->urlGenerator->linkToDefaultPageUrl());
 	}
 
-	/**
-	 * @PublicPage
-	 * @UseSession
-	 * @NoCSRFRequired
-	 * @BruteForceProtection(action=login)
-	 *
-	 * @param string $user
-	 * @param string $password
-	 * @param string $redirect_url
-	 * @param string $timezone
-	 * @param string $timezone_offset
-	 *
-	 * @return RedirectResponse
-	 */
-	public function tryLogin(string $user,
-							 string $password,
-							 string $redirect_url = null,
-							 string $timezone = '',
-							 string $timezone_offset = ''): RedirectResponse {
-		// If the user is already logged in and the CSRF check does not pass then
-		// simply redirect the user to the correct page as required. This is the
-		// case when an user has already logged-in, in another tab.
-		if (!$this->request->passesCSRFCheck()) {
-			return $this->generateRedirect($redirect_url);
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[BruteForceProtection(action: 'login')]
+	#[UseSession]
+	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
+	#[FrontpageRoute(verb: 'POST', url: '/login')]
+	public function tryLogin(
+		Chain $loginChain,
+		ITrustedDomainHelper $trustedDomainHelper,
+		string $user = '',
+		string $password = '',
+		?string $redirect_url = null,
+		string $timezone = '',
+		string $timezone_offset = '',
+	): RedirectResponse {
+		$error = '';
+
+		$origin = $this->request->getHeader('Origin');
+		$throttle = true;
+		if ($origin === '' || !$trustedDomainHelper->isTrustedUrl($origin)) {
+			// Login attempt not from the same origin,
+			// We only allow this on the login flow but not on the UI login page.
+			// This could have come from someone malicious who tries to block a user by triggering the bruteforce protection.
+			$error = self::LOGIN_MSG_INVALID_ORIGIN;
+			$throttle = false;
+		} elseif (!$this->request->passesCSRFCheck()) {
+			if ($this->userSession->isLoggedIn()) {
+				// If the user is already logged in and the CSRF check does not pass then
+				// simply redirect the user to the correct page as required. This is the
+				// case when a user has already logged-in, in another tab.
+				return $this->generateRedirect($redirect_url);
+			}
+			$error = self::LOGIN_MSG_CSRFCHECKFAILED;
+		}
+
+		if ($error !== '') {
+			// Clear any auth remnants like cookies to ensure a clean login
+			// For the next attempt
+			$this->userSession->logout();
+			return $this->createLoginFailedResponse(
+				$user,
+				$user,
+				$redirect_url,
+				$error,
+				$throttle,
+			);
+		}
+
+		$user = trim($user);
+
+		if (strlen($user) > 255) {
+			return $this->createLoginFailedResponse(
+				$user,
+				$user,
+				$redirect_url,
+				$this->l10n->t('Unsupported email length (>255)')
+			);
 		}
 
 		$data = new LoginData(
 			$this->request,
-			trim($user),
+			$user,
 			$password,
 			$redirect_url,
 			$timezone,
 			$timezone_offset
 		);
-		$result = $this->loginChain->process($data);
+		$result = $loginChain->process($data);
 		if (!$result->isSuccess()) {
 			return $this->createLoginFailedResponse(
 				$data->getUsername(),
@@ -342,7 +368,12 @@ class LoginController extends Controller {
 	 * @return RedirectResponse
 	 */
 	private function createLoginFailedResponse(
-		$user, $originalUser, $redirect_url, string $loginMessage) {
+		$user,
+		$originalUser,
+		$redirect_url,
+		string $loginMessage,
+		bool $throttle = true,
+	) {
 		// Read current user and append if possible we need to
 		// return the unmodified user otherwise we will leak the login name
 		$args = $user !== null ? ['user' => $originalUser, 'direct' => 1] : [];
@@ -352,32 +383,46 @@ class LoginController extends Controller {
 		$response = new RedirectResponse(
 			$this->urlGenerator->linkToRoute('core.login.showLoginForm', $args)
 		);
-		$response->throttle(['user' => substr($user, 0, 64)]);
+		if ($throttle) {
+			$response->throttle(['user' => substr($user, 0, 64)]);
+		}
 		$this->session->set('loginMessages', [
 			[$loginMessage], []
 		]);
+
 		return $response;
 	}
 
 	/**
-	 * @NoAdminRequired
-	 * @UseSession
-	 * @BruteForceProtection(action=sudo)
+	 * Confirm the user password
 	 *
 	 * @license GNU AGPL version 3 or any later version
 	 *
+	 * @param string $password The password of the user
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{lastLogin: int}, array{}>|DataResponse<Http::STATUS_FORBIDDEN, list<empty>, array{}>
+	 *
+	 * 200: Password confirmation succeeded
+	 * 403: Password confirmation failed
 	 */
+	#[NoAdminRequired]
+	#[BruteForceProtection(action: 'sudo')]
+	#[UseSession]
+	#[NoCSRFRequired]
+	#[FrontpageRoute(verb: 'POST', url: '/login/confirm')]
+	#[OpenAPI(scope: OpenAPI::SCOPE_DEFAULT)]
 	public function confirmPassword(string $password): DataResponse {
 		$loginName = $this->userSession->getLoginName();
 		$loginResult = $this->userManager->checkPassword($loginName, $password);
 		if ($loginResult === false) {
 			$response = new DataResponse([], Http::STATUS_FORBIDDEN);
-			$response->throttle();
+			$response->throttle(['loginName' => $loginName]);
 			return $response;
 		}
 
 		$confirmTimestamp = time();
 		$this->session->set('last-password-confirm', $confirmTimestamp);
+		$this->throttler->resetDelay($this->request->getRemoteAddress(), 'sudo', ['loginName' => $loginName]);
 		return new DataResponse(['lastLogin' => $confirmTimestamp], Http::STATUS_OK);
 	}
 }

@@ -1,30 +1,14 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\Comments;
 
 use OCA\DAV\Comments\EntityCollection as EntityCollectionImplemantation;
+use OCA\DAV\Comments\EntityTypeCollection;
 use OCP\Comments\ICommentsManager;
 use OCP\IUserManager;
 use OCP\IUserSession;
@@ -34,11 +18,11 @@ class EntityTypeCollectionTest extends \Test\TestCase {
 
 	/** @var ICommentsManager|\PHPUnit\Framework\MockObject\MockObject */
 	protected $commentsManager;
-	/** @var \OCP\IUserManager|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var IUserManager|\PHPUnit\Framework\MockObject\MockObject */
 	protected $userManager;
 	/** @var LoggerInterface|\PHPUnit\Framework\MockObject\MockObject */
 	protected $logger;
-	/** @var \OCA\DAV\Comments\EntityTypeCollection */
+	/** @var EntityTypeCollection */
 	protected $collection;
 	/** @var IUserSession|\PHPUnit\Framework\MockObject\MockObject */
 	protected $userSession;
@@ -63,7 +47,7 @@ class EntityTypeCollectionTest extends \Test\TestCase {
 
 		$instance = $this;
 
-		$this->collection = new \OCA\DAV\Comments\EntityTypeCollection(
+		$this->collection = new EntityTypeCollection(
 			'files',
 			$this->commentsManager,
 			$this->userManager,
@@ -75,16 +59,16 @@ class EntityTypeCollectionTest extends \Test\TestCase {
 		);
 	}
 
-	public function testChildExistsYes() {
+	public function testChildExistsYes(): void {
 		$this->childMap[17] = true;
 		$this->assertTrue($this->collection->childExists('17'));
 	}
 
-	public function testChildExistsNo() {
+	public function testChildExistsNo(): void {
 		$this->assertFalse($this->collection->childExists('17'));
 	}
 
-	public function testGetChild() {
+	public function testGetChild(): void {
 		$this->childMap[17] = true;
 
 		$ec = $this->collection->getChild('17');
@@ -92,14 +76,14 @@ class EntityTypeCollectionTest extends \Test\TestCase {
 	}
 
 
-	public function testGetChildException() {
+	public function testGetChildException(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotFound::class);
 
 		$this->collection->getChild('17');
 	}
 
 
-	public function testGetChildren() {
+	public function testGetChildren(): void {
 		$this->expectException(\Sabre\DAV\Exception\MethodNotAllowed::class);
 
 		$this->collection->getChildren();

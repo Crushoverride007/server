@@ -3,39 +3,15 @@
 declare(strict_types=1);
 
 /**
- * @copyright 2020 Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OC\AppFramework\Bootstrap;
 
 use Closure;
-use OCP\Calendar\Resource\IBackend as IResourceBackend;
-use OCP\Calendar\Room\IBackend as IRoomBackend;
-use OCP\Collaboration\Reference\IReferenceProvider;
-use OCP\Talk\ITalkBackend;
-use RuntimeException;
-use function array_shift;
+use NCU\Config\Lexicon\IConfigLexicon;
+use OC\Config\Lexicon\CoreConfigLexicon;
 use OC\Support\CrashReport\Registry;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
@@ -43,22 +19,35 @@ use OCP\AppFramework\Middleware;
 use OCP\AppFramework\Services\InitialStateProvider;
 use OCP\Authentication\IAlternativeLogin;
 use OCP\Calendar\ICalendarProvider;
+use OCP\Calendar\Resource\IBackend as IResourceBackend;
+use OCP\Calendar\Room\IBackend as IRoomBackend;
 use OCP\Capabilities\ICapability;
+use OCP\Collaboration\Reference\IReferenceProvider;
 use OCP\Dashboard\IManager;
 use OCP\Dashboard\IWidget;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Template\ICustomTemplateProvider;
 use OCP\Http\WellKnown\IHandler;
+use OCP\Mail\Provider\IProvider as IMailProvider;
 use OCP\Notification\INotifier;
 use OCP\Profile\ILinkAction;
 use OCP\Search\IProvider;
+use OCP\Settings\IDeclarativeSettingsForm;
+use OCP\SetupCheck\ISetupCheck;
+use OCP\Share\IPublicShareTemplateProvider;
+use OCP\SpeechToText\ISpeechToTextProvider;
 use OCP\Support\CrashReport\IReporter;
+use OCP\Talk\ITalkBackend;
+use OCP\Teams\ITeamResourceProvider;
+use OCP\TextProcessing\IProvider as ITextProcessingProvider;
+use OCP\Translation\ITranslationProvider;
 use OCP\UserMigration\IMigrator as IUserMigrator;
 use Psr\Log\LoggerInterface;
+use RuntimeException;
 use Throwable;
+use function array_shift;
 
 class RegistrationContext {
-
 	/** @var ServiceRegistration<ICapability>[] */
 	private $capabilities = [];
 
@@ -95,7 +84,7 @@ class RegistrationContext {
 	/** @var EventListenerRegistration[] */
 	private $eventListeners = [];
 
-	/** @var ServiceRegistration<Middleware>[] */
+	/** @var MiddlewareRegistration[] */
 	private $middlewares = [];
 
 	/** @var ServiceRegistration<IProvider>[] */
@@ -110,8 +99,17 @@ class RegistrationContext {
 	/** @var ServiceRegistration<IHandler>[] */
 	private $wellKnownHandlers = [];
 
+	/** @var ServiceRegistration<ISpeechToTextProvider>[] */
+	private $speechToTextProviders = [];
+
+	/** @var ServiceRegistration<ITextProcessingProvider>[] */
+	private $textProcessingProviders = [];
+
 	/** @var ServiceRegistration<ICustomTemplateProvider>[] */
 	private $templateProviders = [];
+
+	/** @var ServiceRegistration<ITranslationProvider>[] */
+	private $translationProviders = [];
 
 	/** @var ServiceRegistration<INotifier>[] */
 	private $notifierServices = [];
@@ -125,14 +123,43 @@ class RegistrationContext {
 	/** @var ServiceRegistration<IReferenceProvider>[] */
 	private array $referenceProviders = [];
 
+	/** @var ServiceRegistration<\OCP\TextToImage\IProvider>[] */
+	private $textToImageProviders = [];
+
 	/** @var ParameterRegistration[] */
 	private $sensitiveMethods = [];
 
-	/** @var LoggerInterface */
-	private $logger;
+	/** @var ServiceRegistration<IPublicShareTemplateProvider>[] */
+	private $publicShareTemplateProviders = [];
+
+	private LoggerInterface $logger;
+
+	/** @var ServiceRegistration<ISetupCheck>[] */
+	private array $setupChecks = [];
 
 	/** @var PreviewProviderRegistration[] */
-	private $previewProviders = [];
+	private array $previewProviders = [];
+
+	/** @var ServiceRegistration<IDeclarativeSettingsForm>[] */
+	private array $declarativeSettings = [];
+
+	/** @var array<array-key, string> */
+	private array $configLexiconClasses = ['core' => CoreConfigLexicon::class];
+
+	/** @var ServiceRegistration<ITeamResourceProvider>[] */
+	private array $teamResourceProviders = [];
+
+	/** @var ServiceRegistration<\OCP\TaskProcessing\IProvider>[] */
+	private array $taskProcessingProviders = [];
+
+	/** @var ServiceRegistration<\OCP\TaskProcessing\ITaskType>[] */
+	private array $taskProcessingTaskTypes = [];
+
+	/** @var ServiceRegistration<\OCP\Files\Conversion\IConversionProvider>[] */
+	private array $fileConversionProviders = [];
+	
+	/** @var ServiceRegistration<IMailProvider>[] */
+	private $mailProviders = [];
 
 	public function __construct(LoggerInterface $logger) {
 		$this->logger = $logger;
@@ -206,10 +233,11 @@ class RegistrationContext {
 				);
 			}
 
-			public function registerMiddleware(string $class): void {
+			public function registerMiddleware(string $class, bool $global = false): void {
 				$this->context->registerMiddleware(
 					$this->appId,
-					$class
+					$class,
+					$global,
 				);
 			}
 
@@ -241,8 +269,35 @@ class RegistrationContext {
 				);
 			}
 
+			public function registerSpeechToTextProvider(string $providerClass): void {
+				$this->context->registerSpeechToTextProvider(
+					$this->appId,
+					$providerClass
+				);
+			}
+			public function registerTextProcessingProvider(string $providerClass): void {
+				$this->context->registerTextProcessingProvider(
+					$this->appId,
+					$providerClass
+				);
+			}
+
+			public function registerTextToImageProvider(string $providerClass): void {
+				$this->context->registerTextToImageProvider(
+					$this->appId,
+					$providerClass
+				);
+			}
+
 			public function registerTemplateProvider(string $providerClass): void {
 				$this->context->registerTemplateProvider(
+					$this->appId,
+					$providerClass
+				);
+			}
+
+			public function registerTranslationProvider(string $providerClass): void {
+				$this->context->registerTranslationProvider(
 					$this->appId,
 					$providerClass
 				);
@@ -305,6 +360,13 @@ class RegistrationContext {
 				);
 			}
 
+			public function registerTeamResourceProvider(string $class) : void {
+				$this->context->registerTeamResourceProvider(
+					$this->appId,
+					$class
+				);
+			}
+
 			public function registerCalendarRoomBackend(string $class): void {
 				$this->context->registerCalendarRoomBackend(
 					$this->appId,
@@ -326,6 +388,62 @@ class RegistrationContext {
 					$methods
 				);
 			}
+
+			public function registerPublicShareTemplateProvider(string $class): void {
+				$this->context->registerPublicShareTemplateProvider(
+					$this->appId,
+					$class
+				);
+			}
+
+			public function registerSetupCheck(string $setupCheckClass): void {
+				$this->context->registerSetupCheck(
+					$this->appId,
+					$setupCheckClass
+				);
+			}
+
+			public function registerDeclarativeSettings(string $declarativeSettingsClass): void {
+				$this->context->registerDeclarativeSettings(
+					$this->appId,
+					$declarativeSettingsClass
+				);
+			}
+
+			public function registerTaskProcessingProvider(string $taskProcessingProviderClass): void {
+				$this->context->registerTaskProcessingProvider(
+					$this->appId,
+					$taskProcessingProviderClass
+				);
+			}
+
+			public function registerTaskProcessingTaskType(string $taskProcessingTaskTypeClass): void {
+				$this->context->registerTaskProcessingTaskType(
+					$this->appId,
+					$taskProcessingTaskTypeClass
+				);
+			}
+
+			public function registerFileConversionProvider(string $class): void {
+				$this->context->registerFileConversionProvider(
+					$this->appId,
+					$class
+				);
+			}
+
+			public function registerMailProvider(string $class): void {
+				$this->context->registerMailProvider(
+					$this->appId,
+					$class
+				);
+			}
+
+			public function registerConfigLexicon(string $configLexiconClass): void {
+				$this->context->registerConfigLexicon(
+					$this->appId,
+					$configLexiconClass
+				);
+			}
 		};
 	}
 
@@ -337,14 +455,14 @@ class RegistrationContext {
 	}
 
 	/**
-	 * @psalm-param class-string<IReporter> $capability
+	 * @psalm-param class-string<IReporter> $reporterClass
 	 */
 	public function registerCrashReporter(string $appId, string $reporterClass): void {
 		$this->crashReporters[] = new ServiceRegistration($appId, $reporterClass);
 	}
 
 	/**
-	 * @psalm-param class-string<IWidget> $capability
+	 * @psalm-param class-string<IWidget> $panelClass
 	 */
 	public function registerDashboardPanel(string $appId, string $panelClass): void {
 		$this->dashboardPanels[] = new ServiceRegistration($appId, $panelClass);
@@ -369,8 +487,8 @@ class RegistrationContext {
 	/**
 	 * @psalm-param class-string<Middleware> $class
 	 */
-	public function registerMiddleware(string $appId, string $class): void {
-		$this->middlewares[] = new ServiceRegistration($appId, $class);
+	public function registerMiddleware(string $appId, string $class, bool $global): void {
+		$this->middlewares[] = new MiddlewareRegistration($appId, $class, $global);
 	}
 
 	public function registerSearchProvider(string $appId, string $class) {
@@ -389,8 +507,24 @@ class RegistrationContext {
 		$this->wellKnownHandlers[] = new ServiceRegistration($appId, $class);
 	}
 
+	public function registerSpeechToTextProvider(string $appId, string $class): void {
+		$this->speechToTextProviders[] = new ServiceRegistration($appId, $class);
+	}
+
+	public function registerTextProcessingProvider(string $appId, string $class): void {
+		$this->textProcessingProviders[] = new ServiceRegistration($appId, $class);
+	}
+
+	public function registerTextToImageProvider(string $appId, string $class): void {
+		$this->textToImageProviders[] = new ServiceRegistration($appId, $class);
+	}
+
 	public function registerTemplateProvider(string $appId, string $class): void {
 		$this->templateProviders[] = new ServiceRegistration($appId, $class);
+	}
+
+	public function registerTranslationProvider(string $appId, string $class): void {
+		$this->translationProviders[] = new ServiceRegistration($appId, $class);
 	}
 
 	public function registerNotifierService(string $appId, string $class): void {
@@ -426,10 +560,10 @@ class RegistrationContext {
 	public function registerTalkBackend(string $appId, string $backend) {
 		// Some safeguards for invalid registrations
 		if ($appId !== 'spreed') {
-			throw new RuntimeException("Only the Talk app is allowed to register a Talk backend");
+			throw new RuntimeException('Only the Talk app is allowed to register a Talk backend');
 		}
 		if ($this->talkBackendRegistration !== null) {
-			throw new RuntimeException("There can only be one Talk backend");
+			throw new RuntimeException('There can only be one Talk backend');
 		}
 
 		$this->talkBackendRegistration = new ServiceRegistration($appId, $backend);
@@ -450,6 +584,16 @@ class RegistrationContext {
 	}
 
 	/**
+	 * @psalm-param class-string<ITeamResourceProvider> $class
+	 */
+	public function registerTeamResourceProvider(string $appId, string $class) {
+		$this->teamResourceProviders[] = new ServiceRegistration(
+			$appId,
+			$class
+		);
+	}
+
+	/**
 	 * @psalm-param class-string<IUserMigrator> $migratorClass
 	 */
 	public function registerUserMigrator(string $appId, string $migratorClass): void {
@@ -459,6 +603,59 @@ class RegistrationContext {
 	public function registerSensitiveMethods(string $appId, string $class, array $methods): void {
 		$methods = array_filter($methods, 'is_string');
 		$this->sensitiveMethods[] = new ParameterRegistration($appId, $class, $methods);
+	}
+
+	public function registerPublicShareTemplateProvider(string $appId, string $class): void {
+		$this->publicShareTemplateProviders[] = new ServiceRegistration($appId, $class);
+	}
+
+	/**
+	 * @psalm-param class-string<ISetupCheck> $setupCheckClass
+	 */
+	public function registerSetupCheck(string $appId, string $setupCheckClass): void {
+		$this->setupChecks[] = new ServiceRegistration($appId, $setupCheckClass);
+	}
+
+	/**
+	 * @psalm-param class-string<IDeclarativeSettingsForm> $declarativeSettingsClass
+	 */
+	public function registerDeclarativeSettings(string $appId, string $declarativeSettingsClass): void {
+		$this->declarativeSettings[] = new ServiceRegistration($appId, $declarativeSettingsClass);
+	}
+
+	/**
+	 * @psalm-param class-string<\OCP\TaskProcessing\IProvider> $declarativeSettingsClass
+	 */
+	public function registerTaskProcessingProvider(string $appId, string $taskProcessingProviderClass): void {
+		$this->taskProcessingProviders[] = new ServiceRegistration($appId, $taskProcessingProviderClass);
+	}
+
+	/**
+	 * @psalm-param class-string<\OCP\TaskProcessing\ITaskType> $declarativeSettingsClass
+	 */
+	public function registerTaskProcessingTaskType(string $appId, string $taskProcessingTaskTypeClass) {
+		$this->taskProcessingTaskTypes[] = new ServiceRegistration($appId, $taskProcessingTaskTypeClass);
+	}
+
+	/**
+	 * @psalm-param class-string<\OCP\Files\Conversion\IConversionProvider> $class
+	 */
+	public function registerFileConversionProvider(string $appId, string $class): void {
+		$this->fileConversionProviders[] = new ServiceRegistration($appId, $class);
+	}
+
+	/**
+	 * @psalm-param class-string<IMailProvider> $migratorClass
+	 */
+	public function registerMailProvider(string $appId, string $class): void {
+		$this->mailProviders[] = new ServiceRegistration($appId, $class);
+	}
+
+	/**
+	 * @psalm-param class-string<IConfigLexicon> $configLexiconClass
+	 */
+	public function registerConfigLexicon(string $appId, string $configLexiconClass): void {
+		$this->configLexiconClasses[$appId] = $configLexiconClass;
 	}
 
 	/**
@@ -503,9 +700,6 @@ class RegistrationContext {
 		}
 	}
 
-	/**
-	 * @param App[] $apps
-	 */
 	public function delegateDashboardPanelRegistrations(IManager $dashboardManager): void {
 		while (($panel = array_shift($this->dashboardPanels)) !== null) {
 			try {
@@ -618,29 +812,10 @@ class RegistrationContext {
 	}
 
 	/**
-	 * @param App[] $apps
+	 * @return MiddlewareRegistration[]
 	 */
-	public function delegateMiddlewareRegistrations(array $apps): void {
-		while (($middleware = array_shift($this->middlewares)) !== null) {
-			$appId = $middleware->getAppId();
-			if (!isset($apps[$appId])) {
-				// If we land here something really isn't right. But at least we caught the
-				// notice that is otherwise emitted for the undefined index
-				$this->logger->error("App $appId not loaded for the container middleware registration");
-
-				continue;
-			}
-
-			try {
-				$apps[$appId]
-					->getContainer()
-					->registerMiddleWare($middleware->getService());
-			} catch (Throwable $e) {
-				$this->logger->error("Error during capability registration of $appId: " . $e->getMessage(), [
-					'exception' => $e,
-				]);
-			}
-		}
+	public function getMiddlewareRegistrations(): array {
+		return $this->middlewares;
 	}
 
 	/**
@@ -672,10 +847,38 @@ class RegistrationContext {
 	}
 
 	/**
+	 * @return ServiceRegistration<ISpeechToTextProvider>[]
+	 */
+	public function getSpeechToTextProviders(): array {
+		return $this->speechToTextProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<ITextProcessingProvider>[]
+	 */
+	public function getTextProcessingProviders(): array {
+		return $this->textProcessingProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<\OCP\TextToImage\IProvider>[]
+	 */
+	public function getTextToImageProviders(): array {
+		return $this->textToImageProviders;
+	}
+
+	/**
 	 * @return ServiceRegistration<ICustomTemplateProvider>[]
 	 */
 	public function getTemplateProviders(): array {
 		return $this->templateProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<ITranslationProvider>[]
+	 */
+	public function getTranslationProviders(): array {
+		return $this->translationProviders;
 	}
 
 	/**
@@ -756,5 +959,77 @@ class RegistrationContext {
 	 */
 	public function getSensitiveMethods(): array {
 		return $this->sensitiveMethods;
+	}
+
+	/**
+	 * @return ServiceRegistration<IPublicShareTemplateProvider>[]
+	 */
+	public function getPublicShareTemplateProviders(): array {
+		return $this->publicShareTemplateProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<ISetupCheck>[]
+	 */
+	public function getSetupChecks(): array {
+		return $this->setupChecks;
+	}
+
+	/**
+	 * @return ServiceRegistration<ITeamResourceProvider>[]
+	 */
+	public function getTeamResourceProviders(): array {
+		return $this->teamResourceProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<IDeclarativeSettingsForm>[]
+	 */
+	public function getDeclarativeSettings(): array {
+		return $this->declarativeSettings;
+	}
+
+	/**
+	 * @return ServiceRegistration<\OCP\TaskProcessing\IProvider>[]
+	 */
+	public function getTaskProcessingProviders(): array {
+		return $this->taskProcessingProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<\OCP\TaskProcessing\ITaskType>[]
+	 */
+	public function getTaskProcessingTaskTypes(): array {
+		return $this->taskProcessingTaskTypes;
+	}
+
+	/**
+	 * @return ServiceRegistration<\OCP\Files\Conversion\IConversionProvider>[]
+	 */
+	public function getFileConversionProviders(): array {
+		return $this->fileConversionProviders;
+	}
+
+	/**
+	 * @return ServiceRegistration<IMailProvider>[]
+	 */
+	public function getMailProviders(): array {
+		return $this->mailProviders;
+	}
+
+	/**
+	 * returns IConfigLexicon registered by the app.
+	 * null if none registered.
+	 *
+	 * @param string $appId
+	 *
+	 * @return IConfigLexicon|null
+	 */
+	public function getConfigLexicon(string $appId): ?IConfigLexicon {
+		if (!array_key_exists($appId, $this->configLexiconClasses)) {
+			return null;
+		}
+
+		return \OCP\Server::get($this->configLexiconClasses[$appId]);
 	}
 }

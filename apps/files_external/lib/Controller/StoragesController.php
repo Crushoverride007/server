@@ -1,90 +1,34 @@
 <?php
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Jesús Macias <jmacias@solidgear.es>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Juan Pablo Villafáñez <jvillafanez@solidgear.es>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2017-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Files_External\Controller;
 
 use OCA\Files_External\Lib\Auth\AuthMechanism;
 use OCA\Files_External\Lib\Backend\Backend;
-use OCA\Files_External\Lib\DefinitionParameter;
 use OCA\Files_External\Lib\InsufficientDataForMeaningfulAnswerException;
 use OCA\Files_External\Lib\StorageConfig;
+use OCA\Files_External\MountConfig;
 use OCA\Files_External\NotFoundException;
 use OCA\Files_External\Service\StoragesService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\PasswordConfirmationRequired;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\Files\StorageNotAvailableException;
 use OCP\IConfig;
 use OCP\IGroupManager;
 use OCP\IL10N;
-use OCP\ILogger;
 use OCP\IRequest;
 use OCP\IUserSession;
+use Psr\Log\LoggerInterface;
 
 /**
  * Base class for storages controllers
  */
 abstract class StoragesController extends Controller {
-
-	/**
-	 * L10N service
-	 *
-	 * @var IL10N
-	 */
-	protected $l10n;
-
-	/**
-	 * Storages service
-	 *
-	 * @var StoragesService
-	 */
-	protected $service;
-
-	/**
-	 * @var ILogger
-	 */
-	protected $logger;
-
-	/**
-	 * @var IUserSession
-	 */
-	protected $userSession;
-
-	/**
-	 * @var IGroupManager
-	 */
-	protected $groupManager;
-
-	/**
-	 * @var IConfig
-	 */
-	protected $config;
-
 	/**
 	 * Creates a new storages controller.
 	 *
@@ -92,25 +36,19 @@ abstract class StoragesController extends Controller {
 	 * @param IRequest $request request object
 	 * @param IL10N $l10n l10n service
 	 * @param StoragesService $storagesService storage service
-	 * @param ILogger $logger
+	 * @param LoggerInterface $logger
 	 */
 	public function __construct(
 		$AppName,
 		IRequest $request,
-		IL10N $l10n,
-		StoragesService $storagesService,
-		ILogger $logger,
-		IUserSession $userSession,
-		IGroupManager $groupManager,
-		IConfig $config
+		protected IL10N $l10n,
+		protected StoragesService $service,
+		protected LoggerInterface $logger,
+		protected IUserSession $userSession,
+		protected IGroupManager $groupManager,
+		protected IConfig $config,
 	) {
 		parent::__construct($AppName, $request);
-		$this->l10n = $l10n;
-		$this->service = $storagesService;
-		$this->logger = $logger;
-		$this->userSession = $userSession;
-		$this->groupManager = $groupManager;
-		$this->config = $config;
 	}
 
 	/**
@@ -135,7 +73,7 @@ abstract class StoragesController extends Controller {
 		$mountOptions = null,
 		$applicableUsers = null,
 		$applicableGroups = null,
-		$priority = null
+		$priority = null,
 	) {
 		$canCreateNewLocalStorage = $this->config->getSystemValue('files_external_allow_create_new_local', true);
 		if (!$canCreateNewLocalStorage && $backend === 'local') {
@@ -159,7 +97,7 @@ abstract class StoragesController extends Controller {
 				$priority
 			);
 		} catch (\InvalidArgumentException $e) {
-			$this->logger->logException($e);
+			$this->logger->error($e->getMessage(), ['exception' => $e]);
 			return new DataResponse(
 				[
 					'message' => $this->l10n->t('Invalid backend or authentication mechanism class')
@@ -284,7 +222,7 @@ abstract class StoragesController extends Controller {
 			$backend = $storage->getBackend();
 			// update status (can be time-consuming)
 			$storage->setStatus(
-				\OCA\Files_External\MountConfig::getBackendStatus(
+				MountConfig::getBackendStatus(
 					$backend->getStorageClass(),
 					$storage->getBackendOptions(),
 					false,
@@ -292,7 +230,7 @@ abstract class StoragesController extends Controller {
 				)
 			);
 		} catch (InsufficientDataForMeaningfulAnswerException $e) {
-			$status = $e->getCode() ? $e->getCode() : StorageNotAvailableException::STATUS_INDETERMINATE;
+			$status = $e->getCode() ?: StorageNotAvailableException::STATUS_INDETERMINATE;
 			$storage->setStatus(
 				(int)$status,
 				$this->l10n->t('Insufficient data: %s', [$e->getMessage()])
@@ -317,35 +255,12 @@ abstract class StoragesController extends Controller {
 	 * @return DataResponse
 	 */
 	public function index() {
-		$storages = $this->formatStoragesForUI($this->service->getStorages());
+		$storages = array_map(static fn ($storage) => $storage->jsonSerialize(true), $this->service->getStorages());
 
 		return new DataResponse(
 			$storages,
 			Http::STATUS_OK
 		);
-	}
-
-	protected function formatStoragesForUI(array $storages): array {
-		return array_map(function ($storage) {
-			return $this->formatStorageForUI($storage);
-		}, $storages);
-	}
-
-	protected function formatStorageForUI(StorageConfig $storage): StorageConfig {
-		/** @var DefinitionParameter[] $parameters */
-		$parameters = array_merge($storage->getBackend()->getParameters(), $storage->getAuthMechanism()->getParameters());
-
-		$options = $storage->getBackendOptions();
-		foreach ($options as $key => $value) {
-			foreach ($parameters as $parameter) {
-				if ($parameter->getName() === $key && $parameter->getType() === DefinitionParameter::VALUE_PASSWORD) {
-					$storage->setBackendOption($key, DefinitionParameter::UNMODIFIED_PLACEHOLDER);
-					break;
-				}
-			}
-		}
-
-		return $storage;
 	}
 
 	/**
@@ -356,7 +271,7 @@ abstract class StoragesController extends Controller {
 	 *
 	 * @return DataResponse
 	 */
-	public function show($id, $testOnly = true) {
+	public function show(int $id, $testOnly = true) {
 		try {
 			$storage = $this->service->getStorage($id);
 
@@ -370,9 +285,9 @@ abstract class StoragesController extends Controller {
 			);
 		}
 
-		$data = $this->formatStorageForUI($storage)->jsonSerialize();
+		$data = $storage->jsonSerialize(true);
 		$isAdmin = $this->groupManager->isAdmin($this->userSession->getUser()->getUID());
-		$data['can_edit'] = $storage->getType() === StorageConfig::MOUNT_TYPE_PERSONAl || $isAdmin;
+		$data['can_edit'] = $storage->getType() === StorageConfig::MOUNT_TYPE_PERSONAL || $isAdmin;
 
 		return new DataResponse(
 			$data,
@@ -387,7 +302,8 @@ abstract class StoragesController extends Controller {
 	 *
 	 * @return DataResponse
 	 */
-	public function destroy($id) {
+	#[PasswordConfirmationRequired(strict: true)]
+	public function destroy(int $id) {
 		try {
 			$this->service->removeStorage($id);
 		} catch (NotFoundException $e) {

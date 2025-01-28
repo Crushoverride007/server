@@ -3,29 +3,15 @@
 declare(strict_types=1);
 
 /**
- * ownCloud - App Framework
- *
- * @author Bernhard Posselt
- * @copyright 2014 Bernhard Posselt <dev@bernhard-posselt.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\AppFramework\Utility;
 
 use OC\AppFramework\Utility\SimpleContainer;
+use Psr\Container\NotFoundExceptionInterface;
 
 interface TestInterface {
 }
@@ -46,6 +32,17 @@ class ClassComplexConstructor {
 	public function __construct(ClassSimpleConstructor $class, $test) {
 		$this->class = $class;
 		$this->test = $test;
+	}
+}
+
+class ClassNullableUntypedConstructorArg {
+	public function __construct($class) {
+	}
+}
+class ClassNullableTypedConstructorArg {
+	public $class;
+	public function __construct(?\Some\Class $class) {
+		$this->class = $class;
 	}
 }
 
@@ -70,41 +67,61 @@ class SimpleContainerTest extends \Test\TestCase {
 
 
 
-	public function testRegister() {
+	public function testRegister(): void {
 		$this->container->registerParameter('test', 'abc');
 		$this->assertEquals('abc', $this->container->query('test'));
 	}
 
 
+	/**
+	 * Test querying a class that is not registered without autoload enabled
+	 */
+	public function testNothingRegistered(): void {
+		try {
+			$this->container->query('something really hard', false);
+			$this->fail('Expected `QueryException` exception was not thrown');
+		} catch (\Throwable $exception) {
+			$this->assertInstanceOf(\OCP\AppFramework\QueryException::class, $exception);
+			$this->assertInstanceOf(NotFoundExceptionInterface::class, $exception);
+		}
+	}
 
-	public function testNothingRegistered() {
-		$this->expectException(\OCP\AppFramework\QueryException::class);
 
-		$this->container->query('something really hard');
+	/**
+	 * Test querying a class that is not registered with autoload enabled
+	 */
+	public function testNothingRegistered_autoload(): void {
+		try {
+			$this->container->query('something really hard');
+			$this->fail('Expected `QueryException` exception was not thrown');
+		} catch (\Throwable $exception) {
+			$this->assertInstanceOf(\OCP\AppFramework\QueryException::class, $exception);
+			$this->assertInstanceOf(NotFoundExceptionInterface::class, $exception);
+		}
 	}
 
 
 
-	public function testNotAClass() {
+	public function testNotAClass(): void {
 		$this->expectException(\OCP\AppFramework\QueryException::class);
 
 		$this->container->query('Test\AppFramework\Utility\TestInterface');
 	}
 
 
-	public function testNoConstructorClass() {
+	public function testNoConstructorClass(): void {
 		$object = $this->container->query('Test\AppFramework\Utility\ClassEmptyConstructor');
 		$this->assertTrue($object instanceof ClassEmptyConstructor);
 	}
 
 
-	public function testInstancesOnlyOnce() {
+	public function testInstancesOnlyOnce(): void {
 		$object = $this->container->query('Test\AppFramework\Utility\ClassEmptyConstructor');
 		$object2 = $this->container->query('Test\AppFramework\Utility\ClassEmptyConstructor');
 		$this->assertSame($object, $object2);
 	}
 
-	public function testConstructorSimple() {
+	public function testConstructorSimple(): void {
 		$this->container->registerParameter('test', 'abc');
 		$object = $this->container->query(
 			'Test\AppFramework\Utility\ClassSimpleConstructor'
@@ -114,7 +131,7 @@ class SimpleContainerTest extends \Test\TestCase {
 	}
 
 
-	public function testConstructorComplex() {
+	public function testConstructorComplex(): void {
 		$this->container->registerParameter('test', 'abc');
 		$object = $this->container->query(
 			'Test\AppFramework\Utility\ClassComplexConstructor'
@@ -125,12 +142,12 @@ class SimpleContainerTest extends \Test\TestCase {
 	}
 
 
-	public function testConstructorComplexInterface() {
+	public function testConstructorComplexInterface(): void {
 		$this->container->registerParameter('test', 'abc');
 		$this->container->registerService(
-		'Test\AppFramework\Utility\IInterfaceConstructor', function ($c) {
-			return $c->query('Test\AppFramework\Utility\ClassSimpleConstructor');
-		});
+			'Test\AppFramework\Utility\IInterfaceConstructor', function ($c) {
+				return $c->query('Test\AppFramework\Utility\ClassSimpleConstructor');
+			});
 		$object = $this->container->query(
 			'Test\AppFramework\Utility\ClassInterfaceConstructor'
 		);
@@ -140,28 +157,28 @@ class SimpleContainerTest extends \Test\TestCase {
 	}
 
 
-	public function testOverrideService() {
+	public function testOverrideService(): void {
 		$this->container->registerService(
-		'Test\AppFramework\Utility\IInterfaceConstructor', function ($c) {
-			return $c->query('Test\AppFramework\Utility\ClassSimpleConstructor');
-		});
+			'Test\AppFramework\Utility\IInterfaceConstructor', function ($c) {
+				return $c->query('Test\AppFramework\Utility\ClassSimpleConstructor');
+			});
 		$this->container->registerService(
-		'Test\AppFramework\Utility\IInterfaceConstructor', function ($c) {
-			return $c->query('Test\AppFramework\Utility\ClassEmptyConstructor');
-		});
+			'Test\AppFramework\Utility\IInterfaceConstructor', function ($c) {
+				return $c->query('Test\AppFramework\Utility\ClassEmptyConstructor');
+			});
 		$object = $this->container->query(
 			'Test\AppFramework\Utility\IInterfaceConstructor'
 		);
 		$this->assertTrue($object instanceof ClassEmptyConstructor);
 	}
 
-	public function testRegisterAliasParamter() {
+	public function testRegisterAliasParamter(): void {
 		$this->container->registerParameter('test', 'abc');
 		$this->container->registerAlias('test1', 'test');
 		$this->assertEquals('abc', $this->container->query('test1'));
 	}
 
-	public function testRegisterAliasService() {
+	public function testRegisterAliasService(): void {
 		$this->container->registerService('test', function () {
 			return new \StdClass;
 		}, true);
@@ -186,7 +203,7 @@ class SimpleContainerTest extends \Test\TestCase {
 	/**
 	 * @dataProvider sanitizeNameProvider
 	 */
-	public function testSanitizeName($register, $query) {
+	public function testSanitizeName($register, $query): void {
 		$this->container->registerService($register, function () {
 			return 'abc';
 		});
@@ -194,7 +211,7 @@ class SimpleContainerTest extends \Test\TestCase {
 	}
 
 
-	public function testConstructorComplexNoTestParameterFound() {
+	public function testConstructorComplexNoTestParameterFound(): void {
 		$this->expectException(\OCP\AppFramework\QueryException::class);
 
 		$object = $this->container->query(
@@ -202,7 +219,7 @@ class SimpleContainerTest extends \Test\TestCase {
 		);
 	}
 
-	public function testRegisterFactory() {
+	public function testRegisterFactory(): void {
 		$this->container->registerService('test', function () {
 			return new \StdClass();
 		}, false);
@@ -210,7 +227,7 @@ class SimpleContainerTest extends \Test\TestCase {
 			$this->container->query('test'), $this->container->query('test'));
 	}
 
-	public function testRegisterAliasFactory() {
+	public function testRegisterAliasFactory(): void {
 		$this->container->registerService('test', function () {
 			return new \StdClass();
 		}, false);
@@ -221,5 +238,18 @@ class SimpleContainerTest extends \Test\TestCase {
 			$this->container->query('test1'), $this->container->query('test1'));
 		$this->assertNotSame(
 			$this->container->query('test'), $this->container->query('test1'));
+	}
+
+	public function testQueryUntypedNullable(): void {
+		$this->expectException(\OCP\AppFramework\QueryException::class);
+
+		$this->container->query(ClassNullableUntypedConstructorArg::class);
+	}
+
+	public function testQueryTypedNullable(): void {
+		/** @var ClassNullableTypedConstructorArg $service */
+		$service = $this->container->query(ClassNullableTypedConstructorArg::class);
+
+		self::assertNull($service->class);
 	}
 }

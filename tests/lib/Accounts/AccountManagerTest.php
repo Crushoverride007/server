@@ -1,37 +1,25 @@
 <?php
 
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Björn Schießle <schiessle@owncloud.com>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace Test\Accounts;
 
 use OC\Accounts\Account;
 use OC\Accounts\AccountManager;
+use OC\PhoneNumberUtil;
 use OCA\Settings\BackgroundJobs\VerifyUserData;
 use OCP\Accounts\IAccountManager;
+use OCP\Accounts\UserUpdatedEvent;
 use OCP\BackgroundJob\IJobList;
 use OCP\Defaults;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IConfig;
 use OCP\IDBConnection;
+use OCP\IPhoneNumberUtil;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\L10N\IFactory;
@@ -40,8 +28,6 @@ use OCP\Security\ICrypto;
 use OCP\Security\VerificationToken\IVerificationToken;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\EventDispatcher\EventDispatcherInterface;
-use Symfony\Component\EventDispatcher\GenericEvent;
 use Test\TestCase;
 
 /**
@@ -70,11 +56,13 @@ class AccountManagerTest extends TestCase {
 	/** @var IConfig|MockObject */
 	private $config;
 
-	/** @var  EventDispatcherInterface|MockObject */
+	/** @var IEventDispatcher|MockObject */
 	private $eventDispatcher;
 
 	/** @var IJobList|MockObject */
 	private $jobList;
+	/** @var IPhoneNumberUtil */
+	private $phoneNumberUtil;
 
 	/** accounts table name */
 	private string $table = 'accounts';
@@ -86,7 +74,7 @@ class AccountManagerTest extends TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->eventDispatcher = $this->createMock(EventDispatcherInterface::class);
+		$this->eventDispatcher = $this->createMock(IEventDispatcher::class);
 		$this->connection = \OC::$server->get(IDBConnection::class);
 		$this->config = $this->createMock(IConfig::class);
 		$this->jobList = $this->createMock(IJobList::class);
@@ -97,6 +85,7 @@ class AccountManagerTest extends TestCase {
 		$this->l10nFactory = $this->createMock(IFactory::class);
 		$this->urlGenerator = $this->createMock(IURLGenerator::class);
 		$this->crypto = $this->createMock(ICrypto::class);
+		$this->phoneNumberUtil = new PhoneNumberUtil();
 
 		$this->accountManager = new AccountManager(
 			$this->connection,
@@ -109,7 +98,8 @@ class AccountManagerTest extends TestCase {
 			$this->defaults,
 			$this->l10nFactory,
 			$this->urlGenerator,
-			$this->crypto
+			$this->crypto,
+			$this->phoneNumberUtil,
 		);
 	}
 
@@ -119,7 +109,7 @@ class AccountManagerTest extends TestCase {
 		$query->delete($this->table)->executeStatement();
 	}
 
-	protected function makeUser(string $uid, string $name, string $email = null): IUser {
+	protected function makeUser(string $uid, string $name, ?string $email = null): IUser {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->any())
 			->method('getUid')
@@ -154,6 +144,11 @@ class AccountManagerTest extends TestCase {
 					[
 						'name' => IAccountManager::PROPERTY_TWITTER,
 						'value' => '@sometwitter',
+						'scope' => IAccountManager::SCOPE_PUBLISHED
+					],
+					[
+						'name' => IAccountManager::PROPERTY_FEDIVERSE,
+						'value' => '@someMastodon@mastodon.social',
 						'scope' => IAccountManager::SCOPE_PUBLISHED
 					],
 					[
@@ -212,6 +207,11 @@ class AccountManagerTest extends TestCase {
 						'scope' => IAccountManager::SCOPE_FEDERATED
 					],
 					[
+						'name' => IAccountManager::PROPERTY_FEDIVERSE,
+						'value' => '@a_alice@cool.social',
+						'scope' => IAccountManager::SCOPE_FEDERATED
+					],
+					[
 						'name' => IAccountManager::PROPERTY_PHONE,
 						'value' => '+491602312121',
 						'scope' => IAccountManager::SCOPE_LOCAL
@@ -267,6 +267,11 @@ class AccountManagerTest extends TestCase {
 						'scope' => IAccountManager::SCOPE_LOCAL
 					],
 					[
+						'name' => IAccountManager::PROPERTY_FEDIVERSE,
+						'value' => '',
+						'scope' => IAccountManager::SCOPE_LOCAL
+					],
+					[
 						'name' => IAccountManager::PROPERTY_PHONE,
 						'value' => '+491603121212',
 						'scope' => IAccountManager::SCOPE_PUBLISHED
@@ -318,6 +323,11 @@ class AccountManagerTest extends TestCase {
 					],
 					[
 						'name' => IAccountManager::PROPERTY_TWITTER,
+						'value' => '', '
+						scope' => IAccountManager::SCOPE_LOCAL
+					],
+					[
+						'name' => IAccountManager::PROPERTY_FEDIVERSE,
 						'value' => '', '
 						scope' => IAccountManager::SCOPE_LOCAL
 					],
@@ -387,6 +397,11 @@ class AccountManagerTest extends TestCase {
 						'scope' => IAccountManager::SCOPE_LOCAL
 					],
 					[
+						'name' => IAccountManager::PROPERTY_FEDIVERSE,
+						'value' => '',
+						'scope' => IAccountManager::SCOPE_LOCAL
+					],
+					[
 						'name' => IAccountManager::PROPERTY_PHONE,
 						'value' => '+71602121231',
 						'scope' => IAccountManager::SCOPE_FEDERATED
@@ -448,7 +463,8 @@ class AccountManagerTest extends TestCase {
 				$this->defaults,
 				$this->l10nFactory,
 				$this->urlGenerator,
-				$this->crypto
+				$this->crypto,
+				$this->phoneNumberUtil,
 			])
 			->onlyMethods($mockedMethods)
 			->getMock();
@@ -458,7 +474,7 @@ class AccountManagerTest extends TestCase {
 	 * @dataProvider dataTrueFalse
 	 *
 	 */
-	public function testUpdateUser(array $newData, array $oldData, bool $insertNew, bool $updateExisting) {
+	public function testUpdateUser(array $newData, array $oldData, bool $insertNew, bool $updateExisting): void {
 		$accountManager = $this->getInstance(['getUser', 'insertNewUser', 'updateExistingUser']);
 		/** @var IUser $user */
 		$user = $this->createMock(IUser::class);
@@ -477,15 +493,14 @@ class AccountManagerTest extends TestCase {
 		if (!$insertNew && !$updateExisting) {
 			$accountManager->expects($this->never())->method('updateExistingUser');
 			$accountManager->expects($this->never())->method('insertNewUser');
-			$this->eventDispatcher->expects($this->never())->method('dispatch');
+			$this->eventDispatcher->expects($this->never())->method('dispatchTyped');
 		} else {
-			$this->eventDispatcher->expects($this->once())->method('dispatch')
+			$this->eventDispatcher->expects($this->once())->method('dispatchTyped')
 				->willReturnCallback(
-					function ($eventName, $event) use ($user, $newData) {
-						$this->assertSame('OC\AccountManager::userUpdated', $eventName);
-						$this->assertInstanceOf(GenericEvent::class, $event);
-						$this->assertSame($user, $event->getSubject());
-						$this->assertSame($newData, $event->getArguments());
+					function ($event) use ($user, $newData) {
+						$this->assertInstanceOf(UserUpdatedEvent::class, $event);
+						$this->assertSame($user, $event->getUser());
+						$this->assertSame($newData, $event->getData());
 					}
 				);
 		}
@@ -501,7 +516,7 @@ class AccountManagerTest extends TestCase {
 		];
 	}
 
-	public function testAddMissingDefaults() {
+	public function testAddMissingDefaults(): void {
 		$user = $this->createMock(IUser::class);
 
 		$this->config
@@ -571,6 +586,13 @@ class AccountManagerTest extends TestCase {
 			],
 
 			[
+				'name' => IAccountManager::PROPERTY_FEDIVERSE,
+				'value' => '',
+				'scope' => IAccountManager::SCOPE_LOCAL,
+				'verified' => IAccountManager::NOT_VERIFIED,
+			],
+
+			[
 				'name' => IAccountManager::PROPERTY_ORGANISATION,
 				'value' => '',
 				'scope' => IAccountManager::SCOPE_LOCAL,
@@ -595,8 +617,20 @@ class AccountManagerTest extends TestCase {
 			],
 
 			[
+				'name' => IAccountManager::PROPERTY_BIRTHDATE,
+				'value' => '',
+				'scope' => IAccountManager::SCOPE_LOCAL,
+			],
+
+			[
 				'name' => IAccountManager::PROPERTY_PROFILE_ENABLED,
 				'value' => '1',
+			],
+
+			[
+				'name' => IAccountManager::PROPERTY_PRONOUNS,
+				'value' => '',
+				'scope' => IAccountManager::SCOPE_FEDERATED,
 			],
 		];
 		$this->config->expects($this->once())->method('getSystemValue')->with('account_manager.default_property_scope', [])->willReturn([]);
@@ -607,7 +641,7 @@ class AccountManagerTest extends TestCase {
 		$this->assertSame($expected, $result);
 	}
 
-	public function testGetAccount() {
+	public function testGetAccount(): void {
 		$accountManager = $this->getInstance(['getUser']);
 		/** @var IUser $user */
 		$user = $this->createMock(IUser::class);
@@ -618,6 +652,12 @@ class AccountManagerTest extends TestCase {
 				'scope' => IAccountManager::SCOPE_LOCAL,
 				'verified' => IAccountManager::NOT_VERIFIED,
 				'name' => IAccountManager::PROPERTY_TWITTER,
+			],
+			[
+				'value' => '@mastohandle@mastodon.social',
+				'scope' => IAccountManager::SCOPE_LOCAL,
+				'verified' => IAccountManager::NOT_VERIFIED,
+				'name' => IAccountManager::PROPERTY_FEDIVERSE,
 			],
 			[
 				'value' => 'test@example.com',
@@ -634,6 +674,7 @@ class AccountManagerTest extends TestCase {
 		];
 		$expected = new Account($user);
 		$expected->setProperty(IAccountManager::PROPERTY_TWITTER, '@twitterhandle', IAccountManager::SCOPE_LOCAL, IAccountManager::NOT_VERIFIED);
+		$expected->setProperty(IAccountManager::PROPERTY_FEDIVERSE, '@mastohandle@mastodon.social', IAccountManager::SCOPE_LOCAL, IAccountManager::NOT_VERIFIED);
 		$expected->setProperty(IAccountManager::PROPERTY_EMAIL, 'test@example.com', IAccountManager::SCOPE_PUBLISHED, IAccountManager::VERIFICATION_IN_PROGRESS);
 		$expected->setProperty(IAccountManager::PROPERTY_WEBSITE, 'https://example.com', IAccountManager::SCOPE_FEDERATED, IAccountManager::VERIFIED);
 
@@ -844,7 +885,7 @@ class AccountManagerTest extends TestCase {
 		$result = $this->invokePrivate($this->accountManager, 'buildDefaultUserRecord', [$user]);
 		$resultProperties = array_column($result, 'name');
 
-		$this->assertEmpty(array_diff($resultProperties, IAccountManager::ALLOWED_PROPERTIES), "Building default user record returned non-allowed properties");
+		$this->assertEmpty(array_diff($resultProperties, IAccountManager::ALLOWED_PROPERTIES), 'Building default user record returned non-allowed properties');
 		foreach ($expectedResultScopes as $expectedResultScopeKey => $expectedResultScopeValue) {
 			$resultScope = $result[array_search($expectedResultScopeKey, $resultProperties)]['scope'];
 			$this->assertEquals($expectedResultScopeValue, $resultScope, "The result scope doesn't follow the value set into the config or defaults correctly.");

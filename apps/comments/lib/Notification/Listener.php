@@ -1,25 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Comments\Notification;
 
@@ -27,27 +11,16 @@ use OCP\Comments\CommentsEvent;
 use OCP\Comments\IComment;
 use OCP\IUserManager;
 use OCP\Notification\IManager;
+use OCP\Notification\INotification;
 
 class Listener {
-
-	protected IManager $notificationManager;
-	protected IUserManager $userManager;
-
-	/**
-	 * Listener constructor.
-	 */
 	public function __construct(
-		IManager $notificationManager,
-		IUserManager $userManager
+		protected IManager $notificationManager,
+		protected IUserManager $userManager,
 	) {
-		$this->notificationManager = $notificationManager;
-		$this->userManager = $userManager;
 	}
 
-	/**
-	 * @param CommentsEvent $event
-	 */
-	public function evaluate(CommentsEvent $event) {
+	public function evaluate(CommentsEvent $event): void {
 		$comment = $event->getComment();
 
 		$mentions = $this->extractMentions($comment->getMentions());
@@ -77,12 +50,9 @@ class Listener {
 	}
 
 	/**
-	 * creates a notification instance and fills it with comment data
-	 *
-	 * @param IComment $comment
-	 * @return \OCP\Notification\INotification
+	 * Creates a notification instance and fills it with comment data
 	 */
-	public function instantiateNotification(IComment $comment) {
+	public function instantiateNotification(IComment $comment): INotification {
 		$notification = $this->notificationManager->createNotification();
 		$notification
 			->setApp('comments')
@@ -94,12 +64,12 @@ class Listener {
 	}
 
 	/**
-	 * flattens the mention array returned from comments to a list of user ids.
+	 * Flattens the mention array returned from comments to a list of user ids.
 	 *
 	 * @param array $mentions
-	 * @return string[] containing the mentions, e.g. ['alice', 'bob']
+	 * @return list<string> containing the mentions, e.g. ['alice', 'bob']
 	 */
-	public function extractMentions(array $mentions) {
+	public function extractMentions(array $mentions): array {
 		if (empty($mentions)) {
 			return [];
 		}

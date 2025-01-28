@@ -1,27 +1,7 @@
 <?php
 /**
- * @copyright 2017, Georg Ehrke <oc.list@georgehrke.com>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\Tests\unit\CalDAV;
 
@@ -31,10 +11,15 @@ use OCA\DAV\CalDAV\Calendar;
 use OCA\DAV\CalDAV\CalendarImpl;
 use OCA\DAV\CalDAV\InvitationResponse\InvitationResponseServer;
 use OCA\DAV\CalDAV\Schedule\Plugin;
+use OCA\DAV\Connector\Sabre\Server;
+use OCP\Calendar\Exceptions\CalendarException;
 use PHPUnit\Framework\MockObject\MockObject;
+use Sabre\VObject\Component\VCalendar;
+use Sabre\VObject\Component\VEvent;
+use Sabre\VObject\ITip\Message;
+use Sabre\VObject\Reader;
 
 class CalendarImplTest extends \Test\TestCase {
-
 	/** @var CalendarImpl */
 	private $calendarImpl;
 
@@ -55,7 +40,8 @@ class CalendarImplTest extends \Test\TestCase {
 			'id' => 'fancy_id_123',
 			'{DAV:}displayname' => 'user readable name 123',
 			'{http://apple.com/ns/ical/}calendar-color' => '#AABBCC',
-			'uri' => '/this/is/a/uri'
+			'uri' => '/this/is/a/uri',
+			'principaluri' => 'principal/users/foobar'
 		];
 		$this->backend = $this->createMock(CalDavBackend::class);
 
@@ -64,19 +50,19 @@ class CalendarImplTest extends \Test\TestCase {
 	}
 
 
-	public function testGetKey() {
+	public function testGetKey(): void {
 		$this->assertEquals($this->calendarImpl->getKey(), 'fancy_id_123');
 	}
 
-	public function testGetDisplayname() {
-		$this->assertEquals($this->calendarImpl->getDisplayName(),'user readable name 123');
+	public function testGetDisplayname(): void {
+		$this->assertEquals($this->calendarImpl->getDisplayName(), 'user readable name 123');
 	}
 
-	public function testGetDisplayColor() {
+	public function testGetDisplayColor(): void {
 		$this->assertEquals($this->calendarImpl->getDisplayColor(), '#AABBCC');
 	}
 
-	public function testSearch() {
+	public function testSearch(): void {
 		$this->backend->expects($this->once())
 			->method('search')
 			->with($this->calendarInfo, 'abc', ['def'], ['ghi'], 42, 1337)
@@ -86,98 +72,157 @@ class CalendarImplTest extends \Test\TestCase {
 		$this->assertEquals($result, ['SEARCHRESULTS']);
 	}
 
-	public function testGetPermissionRead() {
+	public function testGetPermissionRead(): void {
 		$this->calendar->expects($this->once())
 			->method('getACL')
 			->with()
 			->willReturn([
-				['privilege' => '{DAV:}read']
+				['privilege' => '{DAV:}read', 'principal' => 'principal/users/foobar'],
+				['privilege' => '{DAV:}read', 'principal' => 'principal/users/other'],
+				['privilege' => '{DAV:}write', 'principal' => 'principal/users/other'],
+				['privilege' => '{DAV:}all', 'principal' => 'principal/users/other'],
 			]);
 
 		$this->assertEquals(1, $this->calendarImpl->getPermissions());
 	}
 
-	public function testGetPermissionWrite() {
+	public function testGetPermissionWrite(): void {
 		$this->calendar->expects($this->once())
 			->method('getACL')
 			->with()
 			->willReturn([
-				['privilege' => '{DAV:}write']
+				['privilege' => '{DAV:}write', 'principal' => 'principal/users/foobar'],
+				['privilege' => '{DAV:}read', 'principal' => 'principal/users/other'],
+				['privilege' => '{DAV:}all', 'principal' => 'principal/users/other'],
 			]);
 
 		$this->assertEquals(6, $this->calendarImpl->getPermissions());
 	}
 
-	public function testGetPermissionReadWrite() {
+	public function testGetPermissionReadWrite(): void {
 		$this->calendar->expects($this->once())
 			->method('getACL')
 			->with()
 			->willReturn([
-				['privilege' => '{DAV:}read'],
-				['privilege' => '{DAV:}write']
+				['privilege' => '{DAV:}write', 'principal' => 'principal/users/foobar'],
+				['privilege' => '{DAV:}read', 'principal' => 'principal/users/foobar'],
+				['privilege' => '{DAV:}all', 'principal' => 'principal/users/other'],
 			]);
 
 		$this->assertEquals(7, $this->calendarImpl->getPermissions());
 	}
 
-	public function testGetPermissionAll() {
+	public function testGetPermissionAll(): void {
 		$this->calendar->expects($this->once())
 			->method('getACL')
 			->with()
 			->willReturn([
-				['privilege' => '{DAV:}all']
+				['privilege' => '{DAV:}all', 'principal' => 'principal/users/foobar'],
 			]);
 
 		$this->assertEquals(31, $this->calendarImpl->getPermissions());
 	}
 
 	public function testHandleImipMessage(): void {
-		$invitationResponseServer = $this->createConfiguredMock(InvitationResponseServer::class, [
-			'server' => $this->createConfiguredMock(CalDavBackend::class, [
-				'getPlugin' => [
-					'auth' => $this->createMock(CustomPrincipalPlugin::class),
-					'schedule' => $this->createMock(Plugin::class)
-				]
-			])
-		]);
-
 		$message = <<<EOF
 BEGIN:VCALENDAR
 PRODID:-//Nextcloud/Nextcloud CalDAV Server//EN
 METHOD:REPLY
 VERSION:2.0
 BEGIN:VEVENT
-ATTENDEE;PARTSTAT=mailto:lewis@stardew-tent-living.com:ACCEPTED
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:lewis@stardew-tent-living.com
 ORGANIZER:mailto:pierre@generalstore.com
 UID:aUniqueUid
 SEQUENCE:2
 REQUEST-STATUS:2.0;Success
-%sEND:VEVENT
+END:VEVENT
 END:VCALENDAR
 EOF;
 
 		/** @var CustomPrincipalPlugin|MockObject $authPlugin */
-		$authPlugin = $invitationResponseServer->server->getPlugin('auth');
+		$authPlugin = $this->createMock(CustomPrincipalPlugin::class);
 		$authPlugin->expects(self::once())
-			->method('setPrincipalUri')
+			->method('setCurrentPrincipal')
 			->with($this->calendar->getPrincipalURI());
 
+		/** @var \Sabre\DAVACL\Plugin|MockObject $aclPlugin */
+		$aclPlugin = $this->createMock(\Sabre\DAVACL\Plugin::class);
+
 		/** @var Plugin|MockObject $schedulingPlugin */
-		$schedulingPlugin = $invitationResponseServer->server->getPlugin('caldav-schedule');
-		$schedulingPlugin->expects(self::once())
-			->method('setPathOfCalendarObjectChange')
-			->with('fullcalendarname');
+		$schedulingPlugin = $this->createMock(Plugin::class);
+		$iTipMessage = $this->getITipMessage($message);
+		$iTipMessage->recipient = 'mailto:lewis@stardew-tent-living.com';
+
+		$server = $this->createMock(Server::class);
+		$server->expects($this->any())
+			->method('getPlugin')
+			->willReturnMap([
+				['auth', $authPlugin],
+				['acl', $aclPlugin],
+				['caldav-schedule', $schedulingPlugin]
+			]);
+		$server->expects(self::once())
+			->method('emit');
+
+		$invitationResponseServer = $this->createPartialMock(InvitationResponseServer::class, ['getServer', 'isExternalAttendee']);
+		$invitationResponseServer->server = $server;
+		$invitationResponseServer->expects($this->any())
+			->method('getServer')
+			->willReturn($server);
+		$invitationResponseServer->expects(self::once())
+			->method('isExternalAttendee')
+			->willReturn(false);
+
+		$calendarImpl = $this->getMockBuilder(CalendarImpl::class)
+			->setConstructorArgs([$this->calendar, $this->calendarInfo, $this->backend])
+			->onlyMethods(['getInvitationResponseServer'])
+			->getMock();
+		$calendarImpl->expects($this->once())
+			->method('getInvitationResponseServer')
+			->willReturn($invitationResponseServer);
+
+		$calendarImpl->handleIMipMessage('filename.ics', $message);
 	}
 
 	public function testHandleImipMessageNoCalendarUri(): void {
-		$invitationResponseServer = $this->createConfiguredMock(InvitationResponseServer::class, [
-			'server' => $this->createConfiguredMock(CalDavBackend::class, [
-				'getPlugin' => [
-					'auth' => $this->createMock(CustomPrincipalPlugin::class),
-					'schedule' => $this->createMock(Plugin::class)
-				]
-			])
-		]);
+		/** @var CustomPrincipalPlugin|MockObject $authPlugin */
+		$authPlugin = $this->createMock(CustomPrincipalPlugin::class);
+		$authPlugin->expects(self::once())
+			->method('setCurrentPrincipal')
+			->with($this->calendar->getPrincipalURI());
+		unset($this->calendarInfo['uri']);
+
+		/** @var Plugin|MockObject $schedulingPlugin */
+		$schedulingPlugin = $this->createMock(Plugin::class);
+
+		/** @var \Sabre\DAVACL\Plugin|MockObject $schedulingPlugin */
+		$aclPlugin = $this->createMock(\Sabre\DAVACL\Plugin::class);
+
+		$server =
+			$this->createMock(Server::class);
+		$server->expects($this->any())
+			->method('getPlugin')
+			->willReturnMap([
+				['auth', $authPlugin],
+				['acl', $aclPlugin],
+				['caldav-schedule', $schedulingPlugin]
+			]);
+		$server->expects(self::never())
+			->method('emit');
+
+		$invitationResponseServer = $this->createPartialMock(InvitationResponseServer::class, ['getServer']);
+		$invitationResponseServer->server = $server;
+		$invitationResponseServer->expects($this->any())
+			->method('getServer')
+			->willReturn($server);
+
+		$calendarImpl = $this->getMockBuilder(CalendarImpl::class)
+			->setConstructorArgs([$this->calendar, $this->calendarInfo, $this->backend])
+			->onlyMethods(['getInvitationResponseServer'])
+			->getMock();
+		$calendarImpl->expects($this->once())
+			->method('getInvitationResponseServer')
+			->willReturn($invitationResponseServer);
 
 		$message = <<<EOF
 BEGIN:VCALENDAR
@@ -185,23 +230,35 @@ PRODID:-//Nextcloud/Nextcloud CalDAV Server//EN
 METHOD:REPLY
 VERSION:2.0
 BEGIN:VEVENT
-ATTENDEE;PARTSTAT=mailto:lewis@stardew-tent-living.com:ACCEPTED
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:lewis@stardew-tent-living.com
 ORGANIZER:mailto:pierre@generalstore.com
 UID:aUniqueUid
 SEQUENCE:2
 REQUEST-STATUS:2.0;Success
-%sEND:VEVENT
+END:VEVENT
 END:VCALENDAR
 EOF;
 
-		/** @var CustomPrincipalPlugin|MockObject $authPlugin */
-		$authPlugin = $invitationResponseServer->server->getPlugin('auth');
-		$authPlugin->expects(self::once())
-			->method('setPrincipalUri')
-			->with($this->calendar->getPrincipalURI());
+		$this->expectException(CalendarException::class);
+		$calendarImpl->handleIMipMessage('filename.ics', $message);
+	}
 
-		unset($this->calendarInfo['uri']);
-		$this->expectException('CalendarException');
-		$this->calendarImpl->handleIMipMessage('filename.ics', $message);
+	private function getITipMessage($calendarData): Message {
+		$iTipMessage = new Message();
+		/** @var VCalendar $vObject */
+		$vObject = Reader::read($calendarData);
+		/** @var VEvent $vEvent */
+		$vEvent = $vObject->{'VEVENT'};
+		$orgaizer = $vEvent->{'ORGANIZER'}->getValue();
+		$attendee = $vEvent->{'ATTENDEE'}->getValue();
+
+		$iTipMessage->method = $vObject->{'METHOD'}->getValue();
+		$iTipMessage->recipient = $orgaizer;
+		$iTipMessage->sender = $attendee;
+		$iTipMessage->uid = isset($vEvent->{'UID'}) ? $vEvent->{'UID'}->getValue() : '';
+		$iTipMessage->component = 'VEVENT';
+		$iTipMessage->sequence = isset($vEvent->{'SEQUENCE'}) ? (int)$vEvent->{'SEQUENCE'}->getValue() : 0;
+		$iTipMessage->message = $vObject;
+		return $iTipMessage;
 	}
 }

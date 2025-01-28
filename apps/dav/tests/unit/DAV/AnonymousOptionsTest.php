@@ -1,27 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2018 Robin Appelman <robin@icewind.nl>
- *
- * @author Bastien Durel <bastien@durel.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Robin Appelman <robin@icewind.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\tests\unit\DAV;
 
@@ -50,49 +30,49 @@ class AnonymousOptionsTest extends TestCase {
 		return $server->httpResponse;
 	}
 
-	public function testAnonymousOptionsRoot() {
+	public function testAnonymousOptionsRoot(): void {
 		$response = $this->sendRequest('OPTIONS', '');
 
 		$this->assertEquals(401, $response->getStatus());
 	}
 
-	public function testAnonymousOptionsNonRoot() {
+	public function testAnonymousOptionsNonRoot(): void {
 		$response = $this->sendRequest('OPTIONS', 'foo');
 
 		$this->assertEquals(401, $response->getStatus());
 	}
 
-	public function testAnonymousOptionsNonRootSubDir() {
+	public function testAnonymousOptionsNonRootSubDir(): void {
 		$response = $this->sendRequest('OPTIONS', 'foo/bar');
 
 		$this->assertEquals(401, $response->getStatus());
 	}
 
-	public function testAnonymousOptionsRootOffice() {
+	public function testAnonymousOptionsRootOffice(): void {
 		$response = $this->sendRequest('OPTIONS', '', 'Microsoft Office does strange things');
 
 		$this->assertEquals(200, $response->getStatus());
 	}
 
-	public function testAnonymousOptionsNonRootOffice() {
+	public function testAnonymousOptionsNonRootOffice(): void {
 		$response = $this->sendRequest('OPTIONS', 'foo', 'Microsoft Office does strange things');
 
 		$this->assertEquals(200, $response->getStatus());
 	}
 
-	public function testAnonymousOptionsNonRootSubDirOffice() {
+	public function testAnonymousOptionsNonRootSubDirOffice(): void {
 		$response = $this->sendRequest('OPTIONS', 'foo/bar', 'Microsoft Office does strange things');
 
 		$this->assertEquals(200, $response->getStatus());
 	}
 
-	public function testAnonymousHead() {
+	public function testAnonymousHead(): void {
 		$response = $this->sendRequest('HEAD', '', 'Microsoft Office does strange things');
 
 		$this->assertEquals(200, $response->getStatus());
 	}
 
-	public function testAnonymousHeadNoOffice() {
+	public function testAnonymousHeadNoOffice(): void {
 		$response = $this->sendRequest('HEAD', '');
 
 		$this->assertEquals(401, $response->getStatus(), 'curl');
@@ -105,6 +85,6 @@ class SapiMock extends Sapi {
 	 *
 	 * @return void
 	 */
-	public static function sendResponse(ResponseInterface $response) {
+	public static function sendResponse(ResponseInterface $response): void {
 	}
 }

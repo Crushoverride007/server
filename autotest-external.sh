@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 #
-# ownCloud
-#
-# @author Thomas Müller
-# @author Morris Jobke
-# @copyright 2012-2015 Thomas Müller thomas.mueller@tmit.eu
-# @copyright 2014 Morris Jobke hey@morrisjobke.de
+# SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+# SPDX-FileCopyrightText: 2014-2016 ownCloud, Inc.
+# SPDX-License-Identifier: AGPL-3.0-only
 #
 
 #$EXECUTOR_NUMBER is set by Jenkins and allows us to run autotest in parallel
@@ -31,16 +28,21 @@ function print_syntax {
 }
 
 if ! [ -x "$PHPUNIT" ]; then
-	echo "phpunit executable not found, please install phpunit version >= 4.8" >&2
-	exit 3
+	echo "phpunit executable not found, trying local one from build/integration" >&2
+	if [ -x "$PWD/build/integration/vendor/phpunit/phpunit/phpunit" ]; then
+		PHPUNIT="$PWD/build/integration/vendor/phpunit/phpunit/phpunit"
+	else
+		echo "phpunit executable not found, please install phpunit version >= 9.0" >&2
+		exit 3
+	fi
 fi
 
 PHPUNIT_VERSION=$("$PHPUNIT" --version | cut -d" " -f2)
 PHPUNIT_MAJOR_VERSION=$(echo $PHPUNIT_VERSION | cut -d"." -f1)
 PHPUNIT_MINOR_VERSION=$(echo $PHPUNIT_VERSION | cut -d"." -f2)
 
-if ! [ $PHPUNIT_MAJOR_VERSION -gt 4 -o \( $PHPUNIT_MAJOR_VERSION -eq 4 -a $PHPUNIT_MINOR_VERSION -ge 8 \) ]; then
-	echo "phpunit version >= 4.8 required. Version found: $PHPUNIT_VERSION" >&2
+if ! [ $PHPUNIT_MAJOR_VERSION -gt 9 -o \( $PHPUNIT_MAJOR_VERSION -eq 9 -a $PHPUNIT_MINOR_VERSION -ge 0 \) ]; then
+	echo "phpunit version >= 9.0 required. Version found: $PHPUNIT_VERSION" >&2
 	exit 4
 fi
 

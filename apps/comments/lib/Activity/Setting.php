@@ -1,97 +1,52 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- *
- * @author Joas Schilling <coding@schilljs.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\Comments\Activity;
 
-use OCP\Activity\ISetting;
+use OCP\Activity\ActivitySettings;
 use OCP\IL10N;
 
-class Setting implements ISetting {
-
-	/** @var IL10N */
-	protected $l;
-
-	/**
-	 * @param IL10N $l
-	 */
-	public function __construct(IL10N $l) {
-		$this->l = $l;
+class Setting extends ActivitySettings {
+	public function __construct(
+		protected IL10N $l,
+	) {
 	}
 
-	/**
-	 * @return string Lowercase a-z and underscore only identifier
-	 * @since 11.0.0
-	 */
-	public function getIdentifier() {
+	public function getIdentifier(): string {
 		return 'comments';
 	}
 
-	/**
-	 * @return string A translated string
-	 * @since 11.0.0
-	 */
-	public function getName() {
+	public function getName(): string {
 		return $this->l->t('<strong>Comments</strong> for files');
 	}
 
-	/**
-	 * @return int whether the filter should be rather on the top or bottom of
-	 * the admin section. The filters are arranged in ascending order of the
-	 * priority values. It is required to return a value between 0 and 100.
-	 * @since 11.0.0
-	 */
-	public function getPriority() {
+	public function getGroupIdentifier() {
+		return 'files';
+	}
+
+	public function getGroupName() {
+		return $this->l->t('Files');
+	}
+
+	public function getPriority(): int {
 		return 50;
 	}
 
-	/**
-	 * @return bool True when the option can be changed for the stream
-	 * @since 11.0.0
-	 */
-	public function canChangeStream() {
+	public function canChangeStream(): bool {
 		return true;
 	}
 
-	/**
-	 * @return bool True when the option can be changed for the stream
-	 * @since 11.0.0
-	 */
-	public function isDefaultEnabledStream() {
+	public function isDefaultEnabledStream(): bool {
 		return true;
 	}
 
-	/**
-	 * @return bool True when the option can be changed for the mail
-	 * @since 11.0.0
-	 */
-	public function canChangeMail() {
+	public function canChangeMail(): bool {
 		return true;
 	}
 
-	/**
-	 * @return bool True when the option can be changed for the stream
-	 * @since 11.0.0
-	 */
-	public function isDefaultEnabledMail() {
+	public function isDefaultEnabledMail(): bool {
 		return false;
 	}
 }

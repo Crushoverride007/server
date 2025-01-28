@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2015 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2015 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\Streams;
@@ -46,7 +45,7 @@ class DirectoryFilter extends DirectoryWrapper {
 	/**
 	 * @param resource $source
 	 * @param callable $filter
-	 * @return resource|bool
+	 * @return resource|false
 	 */
 	public static function wrap($source, callable $filter) {
 		return self::wrapSource($source, [

@@ -1,5 +1,9 @@
 <?php
-
+/**
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
 namespace Test\Encryption;
 
 use OC\Encryption\Manager;
@@ -13,7 +17,6 @@ use Psr\Log\LoggerInterface;
 use Test\TestCase;
 
 class ManagerTest extends TestCase {
-
 	/** @var Manager */
 	private $manager;
 
@@ -46,16 +49,16 @@ class ManagerTest extends TestCase {
 		$this->manager = new Manager($this->config, $this->logger, $this->l10n, $this->view, $this->util, $this->arrayCache);
 	}
 
-	public function testManagerIsDisabled() {
+	public function testManagerIsDisabled(): void {
 		$this->assertFalse($this->manager->isEnabled());
 	}
 
-	public function testManagerIsDisabledIfEnabledButNoModules() {
+	public function testManagerIsDisabledIfEnabledButNoModules(): void {
 		$this->config->expects($this->any())->method('getAppValue')->willReturn(true);
 		$this->assertFalse($this->manager->isEnabled());
 	}
 
-	public function testManagerIsDisabledIfDisabledButModules() {
+	public function testManagerIsDisabledIfDisabledButModules(): void {
 		$this->config->expects($this->any())->method('getAppValue')->willReturn(false);
 		$em = $this->createMock(IEncryptionModule::class);
 		$em->expects($this->any())->method('getId')->willReturn('id');
@@ -66,8 +69,8 @@ class ManagerTest extends TestCase {
 		$this->assertFalse($this->manager->isEnabled());
 	}
 
-	public function testManagerIsEnabled() {
-		$this->config->expects($this->any())->method('getSystemValue')->willReturn(true);
+	public function testManagerIsEnabled(): void {
+		$this->config->expects($this->any())->method('getSystemValueBool')->willReturn(true);
 		$this->config->expects($this->any())->method('getAppValue')->willReturn('yes');
 		$this->assertTrue($this->manager->isEnabled());
 	}
@@ -84,14 +87,14 @@ class ManagerTest extends TestCase {
 	/**
 	 * @depends testModuleRegistration
 	 */
-	public function testModuleReRegistration($manager) {
+	public function testModuleReRegistration($manager): void {
 		$this->expectException(\OC\Encryption\Exceptions\ModuleAlreadyExistsException::class);
 		$this->expectExceptionMessage('Id "ID0" already used by encryption module "TestDummyModule0"');
 
 		$this->addNewEncryptionModule($manager, 0);
 	}
 
-	public function testModuleUnRegistration() {
+	public function testModuleUnRegistration(): void {
 		$this->config->expects($this->any())->method('getAppValue')->willReturn(true);
 		$this->addNewEncryptionModule($this->manager, 0);
 		$this->assertCount(1, $this->manager->getEncryptionModules());
@@ -101,7 +104,7 @@ class ManagerTest extends TestCase {
 	}
 
 
-	public function testGetEncryptionModuleUnknown() {
+	public function testGetEncryptionModuleUnknown(): void {
 		$this->expectException(\OC\Encryption\Exceptions\ModuleDoesNotExistsException::class);
 		$this->expectExceptionMessage('Module with ID: unknown does not exist.');
 
@@ -111,7 +114,7 @@ class ManagerTest extends TestCase {
 		$this->manager->getEncryptionModule('unknown');
 	}
 
-	public function testGetEncryptionModuleEmpty() {
+	public function testGetEncryptionModuleEmpty(): void {
 		global $defaultId;
 		$defaultId = null;
 
@@ -135,7 +138,7 @@ class ManagerTest extends TestCase {
 		$this->assertEquals('ID1', $this->manager->getEncryptionModule()->getId());
 	}
 
-	public function testGetEncryptionModule() {
+	public function testGetEncryptionModule(): void {
 		global $defaultId;
 		$defaultId = null;
 
@@ -160,7 +163,7 @@ class ManagerTest extends TestCase {
 		$this->assertEquals('ID0', $this->manager->getDefaultEncryptionModuleId());
 	}
 
-	public function testSetDefaultEncryptionModule() {
+	public function testSetDefaultEncryptionModule(): void {
 		global $defaultId;
 		$defaultId = null;
 
@@ -194,63 +197,63 @@ class ManagerTest extends TestCase {
 		$this->assertEquals('ID1', $this->manager->getDefaultEncryptionModuleId());
 	}
 
-//	/**
-//	 * @expectedException \OC\Encryption\Exceptions\ModuleAlreadyExistsException
-//	 * @expectedExceptionMessage Id "0" already used by encryption module "TestDummyModule0"
-//	 */
-//	public function testModuleRegistration() {
-//		$config = $this->createMock(IConfig::class);
-//		$config->expects($this->any())->method('getSystemValue')->willReturn(true);
-//		$em = $this->createMock(IEncryptionModule::class);
-//		$em->expects($this->any())->method('getId')->willReturn(0);
-//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
-//		$m = new Manager($config);
-//		$m->registerEncryptionModule($em);
-//		$this->assertTrue($m->isEnabled());
-//		$m->registerEncryptionModule($em);
-//	}
-//
-//	public function testModuleUnRegistration() {
-//		$config = $this->createMock(IConfig::class);
-//		$config->expects($this->any())->method('getSystemValue')->willReturn(true);
-//		$em = $this->createMock(IEncryptionModule::class);
-//		$em->expects($this->any())->method('getId')->willReturn(0);
-//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
-//		$m = new Manager($config);
-//		$m->registerEncryptionModule($em);
-//		$this->assertTrue($m->isEnabled());
-//		$m->unregisterEncryptionModule($em);
-//		$this->assertFalse($m->isEnabled());
-//	}
-//
-//	/**
-//	 * @expectedException \OC\Encryption\Exceptions\ModuleDoesNotExistsException
-//	 * @expectedExceptionMessage Module with ID: unknown does not exist.
-//	 */
-//	public function testGetEncryptionModuleUnknown() {
-//		$config = $this->createMock(IConfig::class);
-//		$config->expects($this->any())->method('getSystemValue')->willReturn(true);
-//		$em = $this->createMock(IEncryptionModule::class);
-//		$em->expects($this->any())->method('getId')->willReturn(0);
-//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
-//		$m = new Manager($config);
-//		$m->registerEncryptionModule($em);
-//		$this->assertTrue($m->isEnabled());
-//		$m->getEncryptionModule('unknown');
-//	}
-//
-//	public function testGetEncryptionModule() {
-//		$config = $this->createMock(IConfig::class);
-//		$config->expects($this->any())->method('getSystemValue')->willReturn(true);
-//		$em = $this->createMock(IEncryptionModule::class);
-//		$em->expects($this->any())->method('getId')->willReturn(0);
-//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
-//		$m = new Manager($config);
-//		$m->registerEncryptionModule($em);
-//		$this->assertTrue($m->isEnabled());
-//		$en0 = $m->getEncryptionModule(0);
-//		$this->assertEquals(0, $en0->getId());
-//	}
+	//	/**
+	//	 * @expectedException \OC\Encryption\Exceptions\ModuleAlreadyExistsException
+	//	 * @expectedExceptionMessage Id "0" already used by encryption module "TestDummyModule0"
+	//	 */
+	//	public function testModuleRegistration() {
+	//		$config = $this->createMock(IConfig::class);
+	//		$config->expects($this->any())->method('getSystemValueBool')->willReturn(true);
+	//		$em = $this->createMock(IEncryptionModule::class);
+	//		$em->expects($this->any())->method('getId')->willReturn(0);
+	//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
+	//		$m = new Manager($config);
+	//		$m->registerEncryptionModule($em);
+	//		$this->assertTrue($m->isEnabled());
+	//		$m->registerEncryptionModule($em);
+	//	}
+	//
+	//	public function testModuleUnRegistration() {
+	//		$config = $this->createMock(IConfig::class);
+	//		$config->expects($this->any())->method('getSystemValueBool')->willReturn(true);
+	//		$em = $this->createMock(IEncryptionModule::class);
+	//		$em->expects($this->any())->method('getId')->willReturn(0);
+	//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
+	//		$m = new Manager($config);
+	//		$m->registerEncryptionModule($em);
+	//		$this->assertTrue($m->isEnabled());
+	//		$m->unregisterEncryptionModule($em);
+	//		$this->assertFalse($m->isEnabled());
+	//	}
+	//
+	//	/**
+	//	 * @expectedException \OC\Encryption\Exceptions\ModuleDoesNotExistsException
+	//	 * @expectedExceptionMessage Module with ID: unknown does not exist.
+	//	 */
+	//	public function testGetEncryptionModuleUnknown() {
+	//		$config = $this->createMock(IConfig::class);
+	//		$config->expects($this->any())->method('getSystemValueBool')->willReturn(true);
+	//		$em = $this->createMock(IEncryptionModule::class);
+	//		$em->expects($this->any())->method('getId')->willReturn(0);
+	//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
+	//		$m = new Manager($config);
+	//		$m->registerEncryptionModule($em);
+	//		$this->assertTrue($m->isEnabled());
+	//		$m->getEncryptionModule('unknown');
+	//	}
+	//
+	//	public function testGetEncryptionModule() {
+	//		$config = $this->createMock(IConfig::class);
+	//		$config->expects($this->any())->method('getSystemValueBool')->willReturn(true);
+	//		$em = $this->createMock(IEncryptionModule::class);
+	//		$em->expects($this->any())->method('getId')->willReturn(0);
+	//		$em->expects($this->any())->method('getDisplayName')->willReturn('TestDummyModule0');
+	//		$m = new Manager($config);
+	//		$m->registerEncryptionModule($em);
+	//		$this->assertTrue($m->isEnabled());
+	//		$en0 = $m->getEncryptionModule(0);
+	//		$this->assertEquals(0, $en0->getId());
+	//	}
 
 	protected function addNewEncryptionModule(Manager $manager, $id) {
 		$encryptionModule = $this->createMock(IEncryptionModule::class);

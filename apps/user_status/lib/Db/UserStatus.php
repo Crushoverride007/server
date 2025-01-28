@@ -3,29 +3,13 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2020, Georg Ehrke
- *
- * @author Georg Ehrke <oc.list@georgehrke.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\UserStatus\Db;
 
 use OCP\AppFramework\Db\Entity;
+use OCP\DB\Types;
 
 /**
  * Class UserStatus
@@ -42,16 +26,18 @@ use OCP\AppFramework\Db\Entity;
  * @method void setStatusTimestamp(int $statusTimestamp)
  * @method bool getIsUserDefined()
  * @method void setIsUserDefined(bool $isUserDefined)
- * @method string getMessageId()
+ * @method string|null getMessageId()
  * @method void setMessageId(string|null $messageId)
- * @method string getCustomIcon()
+ * @method string|null getCustomIcon()
  * @method void setCustomIcon(string|null $customIcon)
- * @method string getCustomMessage()
+ * @method string|null getCustomMessage()
  * @method void setCustomMessage(string|null $customMessage)
- * @method int getClearAt()
+ * @method int|null getClearAt()
  * @method void setClearAt(int|null $clearAt)
- * @method setIsBackup(bool $true): void
+ * @method setIsBackup(bool $isBackup): void
  * @method getIsBackup(): bool
+ * @method int getStatusMessageTimestamp()
+ * @method void setStatusMessageTimestamp(int $statusTimestamp)
  */
 class UserStatus extends Entity {
 
@@ -82,15 +68,19 @@ class UserStatus extends Entity {
 	/** @var bool $isBackup */
 	public $isBackup;
 
+	/** @var int */
+	protected $statusMessageTimestamp = 0;
+
 	public function __construct() {
 		$this->addType('userId', 'string');
 		$this->addType('status', 'string');
-		$this->addType('statusTimestamp', 'int');
+		$this->addType('statusTimestamp', Types::INTEGER);
 		$this->addType('isUserDefined', 'boolean');
 		$this->addType('messageId', 'string');
 		$this->addType('customIcon', 'string');
 		$this->addType('customMessage', 'string');
-		$this->addType('clearAt', 'int');
+		$this->addType('clearAt', Types::INTEGER);
 		$this->addType('isBackup', 'boolean');
+		$this->addType('statusMessageTimestamp', Types::INTEGER);
 	}
 }

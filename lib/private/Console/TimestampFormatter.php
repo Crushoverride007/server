@@ -1,24 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Joas Schilling <coding@schilljs.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Console;
 
@@ -27,17 +12,17 @@ use Symfony\Component\Console\Formatter\OutputFormatterInterface;
 use Symfony\Component\Console\Formatter\OutputFormatterStyleInterface;
 
 class TimestampFormatter implements OutputFormatterInterface {
-	/** @var IConfig */
+	/** @var ?IConfig */
 	protected $config;
 
 	/** @var OutputFormatterInterface */
 	protected $formatter;
 
 	/**
-	 * @param IConfig $config
+	 * @param ?IConfig $config
 	 * @param OutputFormatterInterface $formatter
 	 */
-	public function __construct(IConfig $config, OutputFormatterInterface $formatter) {
+	public function __construct(?IConfig $config, OutputFormatterInterface $formatter) {
 		$this->config = $config;
 		$this->formatter = $formatter;
 	}
@@ -47,7 +32,7 @@ class TimestampFormatter implements OutputFormatterInterface {
 	 *
 	 * @param bool $decorated Whether to decorate the messages or not
 	 */
-	public function setDecorated($decorated) {
+	public function setDecorated(bool $decorated) {
 		$this->formatter->setDecorated($decorated);
 	}
 
@@ -56,7 +41,7 @@ class TimestampFormatter implements OutputFormatterInterface {
 	 *
 	 * @return bool true if the output will decorate messages, false otherwise
 	 */
-	public function isDecorated() {
+	public function isDecorated(): bool {
 		return $this->formatter->isDecorated();
 	}
 
@@ -66,7 +51,7 @@ class TimestampFormatter implements OutputFormatterInterface {
 	 * @param string $name The style name
 	 * @param OutputFormatterStyleInterface $style The style instance
 	 */
-	public function setStyle($name, OutputFormatterStyleInterface $style) {
+	public function setStyle(string $name, OutputFormatterStyleInterface $style) {
 		$this->formatter->setStyle($name, $style);
 	}
 
@@ -76,7 +61,7 @@ class TimestampFormatter implements OutputFormatterInterface {
 	 * @param string $name
 	 * @return bool
 	 */
-	public function hasStyle($name) {
+	public function hasStyle(string $name): bool {
 		return $this->formatter->hasStyle($name);
 	}
 
@@ -87,28 +72,33 @@ class TimestampFormatter implements OutputFormatterInterface {
 	 * @return OutputFormatterStyleInterface
 	 * @throws \InvalidArgumentException When style isn't defined
 	 */
-	public function getStyle($name) {
+	public function getStyle(string $name): OutputFormatterStyleInterface {
 		return $this->formatter->getStyle($name);
 	}
 
 	/**
 	 * Formats a message according to the given styles.
 	 *
-	 * @param string $message The message to style
-	 * @return string The styled message, prepended with a timestamp using the
-	 * log timezone and dateformat, e.g. "2015-06-23T17:24:37+02:00"
+	 * @param string|null $message The message to style
+	 * @return string|null The styled message, prepended with a timestamp using the
+	 *                     log timezone and dateformat, e.g. "2015-06-23T17:24:37+02:00"
 	 */
-	public function format($message) {
+	public function format(?string $message): ?string {
 		if (!$this->formatter->isDecorated()) {
 			// Don't add anything to the output when we shouldn't
 			return $this->formatter->format($message);
 		}
 
-		$timeZone = $this->config->getSystemValue('logtimezone', 'UTC');
-		$timeZone = $timeZone !== null ? new \DateTimeZone($timeZone) : null;
+		if ($this->config instanceof IConfig) {
+			$timeZone = $this->config->getSystemValue('logtimezone', 'UTC');
+			$timeZone = $timeZone !== null ? new \DateTimeZone($timeZone) : null;
 
-		$time = new \DateTime('now', $timeZone);
-		$timestampInfo = $time->format($this->config->getSystemValue('logdateformat', \DateTimeInterface::ATOM));
+			$time = new \DateTime('now', $timeZone);
+			$timestampInfo = $time->format($this->config->getSystemValue('logdateformat', \DateTimeInterface::ATOM));
+		} else {
+			$time = new \DateTime('now');
+			$timestampInfo = $time->format(\DateTimeInterface::ATOM);
+		}
 
 		return $timestampInfo . ' ' . $this->formatter->format($message);
 	}

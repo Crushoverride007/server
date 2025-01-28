@@ -1,33 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Clark Tomlinson <fallen013@gmail.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Encryption;
 
@@ -39,107 +15,34 @@ use OCA\Encryption\Exceptions\PrivateKeyMissingException;
 use OCA\Encryption\Exceptions\PublicKeyMissingException;
 use OCP\Encryption\Keys\IStorage;
 use OCP\IConfig;
-use OCP\ILogger;
 use OCP\IUserSession;
 use OCP\Lock\ILockingProvider;
+use Psr\Log\LoggerInterface;
 
 class KeyManager {
+	private string $recoveryKeyId;
+	private string $publicShareKeyId;
+	private string $masterKeyId;
+	private string $keyId;
+	private string $publicKeyId = 'publicKey';
+	private string $privateKeyId = 'privateKey';
+	private string $shareKeyId = 'shareKey';
+	private string $fileKeyId = 'fileKey';
 
-	/**
-	 * @var Session
-	 */
-	protected $session;
-	/**
-	 * @var IStorage
-	 */
-	private $keyStorage;
-	/**
-	 * @var Crypt
-	 */
-	private $crypt;
-	/**
-	 * @var string
-	 */
-	private $recoveryKeyId;
-	/**
-	 * @var string
-	 */
-	private $publicShareKeyId;
-	/**
-	 * @var string
-	 */
-	private $masterKeyId;
-	/**
-	 * @var string UserID
-	 */
-	private $keyId;
-	/**
-	 * @var string
-	 */
-	private $publicKeyId = 'publicKey';
-	/**
-	 * @var string
-	 */
-	private $privateKeyId = 'privateKey';
-
-	/**
-	 * @var string
-	 */
-	private $shareKeyId = 'shareKey';
-
-	/**
-	 * @var string
-	 */
-	private $fileKeyId = 'fileKey';
-	/**
-	 * @var IConfig
-	 */
-	private $config;
-	/**
-	 * @var ILogger
-	 */
-	private $log;
-	/**
-	 * @var Util
-	 */
-	private $util;
-
-	/**
-	 * @var ILockingProvider
-	 */
-	private $lockingProvider;
-
-	/**
-	 * @param IStorage $keyStorage
-	 * @param Crypt $crypt
-	 * @param IConfig $config
-	 * @param IUserSession $userSession
-	 * @param Session $session
-	 * @param ILogger $log
-	 * @param Util $util
-	 */
 	public function __construct(
-		IStorage $keyStorage,
-		Crypt $crypt,
-		IConfig $config,
+		private IStorage $keyStorage,
+		private Crypt $crypt,
+		private IConfig $config,
 		IUserSession $userSession,
-		Session $session,
-		ILogger $log,
-		Util $util,
-		ILockingProvider $lockingProvider
+		private Session $session,
+		private LoggerInterface $logger,
+		private Util $util,
+		private ILockingProvider $lockingProvider,
 	) {
-		$this->util = $util;
-		$this->session = $session;
-		$this->keyStorage = $keyStorage;
-		$this->crypt = $crypt;
-		$this->config = $config;
-		$this->log = $log;
-		$this->lockingProvider = $lockingProvider;
-
 		$this->recoveryKeyId = $this->config->getAppValue('encryption',
 			'recoveryKeyId');
 		if (empty($this->recoveryKeyId)) {
-			$this->recoveryKeyId = 'recoveryKey_' . substr(md5(time()), 0, 8);
+			$this->recoveryKeyId = 'recoveryKey_' . substr(md5((string)time()), 0, 8);
 			$this->config->setAppValue('encryption',
 				'recoveryKeyId',
 				$this->recoveryKeyId);
@@ -148,19 +51,18 @@ class KeyManager {
 		$this->publicShareKeyId = $this->config->getAppValue('encryption',
 			'publicShareKeyId');
 		if (empty($this->publicShareKeyId)) {
-			$this->publicShareKeyId = 'pubShare_' . substr(md5(time()), 0, 8);
+			$this->publicShareKeyId = 'pubShare_' . substr(md5((string)time()), 0, 8);
 			$this->config->setAppValue('encryption', 'publicShareKeyId', $this->publicShareKeyId);
 		}
 
 		$this->masterKeyId = $this->config->getAppValue('encryption',
 			'masterKeyId');
 		if (empty($this->masterKeyId)) {
-			$this->masterKeyId = 'master_' . substr(md5(time()), 0, 8);
+			$this->masterKeyId = 'master_' . substr(md5((string)time()), 0, 8);
 			$this->config->setAppValue('encryption', 'masterKeyId', $this->masterKeyId);
 		}
 
 		$this->keyId = $userSession->isLoggedIn() ? $userSession->getUser()->getUID() : false;
-		$this->log = $log;
 	}
 
 	/**
@@ -224,10 +126,10 @@ class KeyManager {
 			}
 			$this->lockingProvider->releaseLock('encryption-generateMasterKey', ILockingProvider::LOCK_EXCLUSIVE);
 		} elseif (empty($publicMasterKey)) {
-			$this->log->error('A private master key is available but the public key could not be found. This should never happen.');
+			$this->logger->error('A private master key is available but the public key could not be found. This should never happen.');
 			return;
 		} elseif (empty($privateMasterKey)) {
-			$this->log->error('A public master key is available but the private key could not be found. This should never happen.');
+			$this->logger->error('A public master key is available but the private key could not be found. This should never happen.');
 			return;
 		}
 
@@ -309,7 +211,7 @@ class KeyManager {
 	 */
 	public function setRecoveryKey($password, $keyPair) {
 		// Save Public Key
-		$this->keyStorage->setSystemUserKey($this->getRecoveryKeyId().
+		$this->keyStorage->setSystemUserKey($this->getRecoveryKeyId() .
 			'.' . $this->publicKeyId,
 			$keyPair['publicKey'],
 			Encryption::ID);
@@ -385,11 +287,9 @@ class KeyManager {
 	/**
 	 * Decrypt private key and store it
 	 *
-	 * @param string $uid user id
-	 * @param string $passPhrase users password
 	 * @return boolean
 	 */
-	public function init($uid, $passPhrase) {
+	public function init(string $uid, ?string $passPhrase) {
 		$this->session->setStatus(Session::INIT_EXECUTED);
 
 		try {
@@ -398,6 +298,10 @@ class KeyManager {
 				$passPhrase = $this->getMasterKeyPassword();
 				$privateKey = $this->getSystemPrivateKey($uid);
 			} else {
+				if ($passPhrase === null) {
+					$this->logger->warning('Master key is disabled but not passphrase provided.');
+					return false;
+				}
 				$privateKey = $this->getPrivateKey($uid);
 			}
 			$privateKey = $this->crypt->decryptPrivateKey($privateKey, $passPhrase, $uid);
@@ -406,11 +310,13 @@ class KeyManager {
 		} catch (DecryptionFailedException $e) {
 			return false;
 		} catch (\Exception $e) {
-			$this->log->logException($e, [
-				'message' => 'Could not decrypt the private key from user "' . $uid . '"" during login. Assume password change on the user back-end.',
-				'level' => ILogger::WARN,
-				'app' => 'encryption',
-			]);
+			$this->logger->warning(
+				'Could not decrypt the private key from user "' . $uid . '"" during login. Assume password change on the user back-end.',
+				[
+					'app' => 'encryption',
+					'exception' => $e,
+				]
+			);
 			return false;
 		}
 
@@ -439,22 +345,25 @@ class KeyManager {
 	}
 
 	/**
-	 * @param string $path
-	 * @param $uid
-	 * @return string
+	 * @param ?bool $useLegacyFileKey null means try both
 	 */
-	public function getFileKey($path, $uid) {
+	public function getFileKey(string $path, ?string $uid, ?bool $useLegacyFileKey, bool $useDecryptAll = false): string {
 		if ($uid === '') {
 			$uid = null;
 		}
 		$publicAccess = is_null($uid);
-		$encryptedFileKey = $this->keyStorage->getFileKey($path, $this->fileKeyId, Encryption::ID);
+		$encryptedFileKey = '';
+		if ($useLegacyFileKey ?? true) {
+			$encryptedFileKey = $this->keyStorage->getFileKey($path, $this->fileKeyId, Encryption::ID);
 
-		if (empty($encryptedFileKey)) {
-			return '';
+			if (empty($encryptedFileKey) && $useLegacyFileKey) {
+				return '';
+			}
 		}
-
-		if ($this->util->isMasterKeyEnabled()) {
+		if ($useDecryptAll) {
+			$shareKey = $this->getShareKey($path, $this->session->getDecryptAllUid());
+			$privateKey = $this->session->getDecryptAllKey();
+		} elseif ($this->util->isMasterKeyEnabled()) {
 			$uid = $this->getMasterKeyId();
 			$shareKey = $this->getShareKey($path, $uid);
 			if ($publicAccess) {
@@ -475,10 +384,17 @@ class KeyManager {
 			$privateKey = $this->session->getPrivateKey();
 		}
 
-		if ($encryptedFileKey && $shareKey && $privateKey) {
-			return $this->crypt->multiKeyDecrypt($encryptedFileKey,
-				$shareKey,
-				$privateKey);
+		if ($useLegacyFileKey ?? true) {
+			if ($encryptedFileKey && $shareKey && $privateKey) {
+				return $this->crypt->multiKeyDecryptLegacy($encryptedFileKey,
+					$shareKey,
+					$privateKey);
+			}
+		}
+		if (!($useLegacyFileKey ?? false)) {
+			if ($shareKey && $privateKey) {
+				return $this->crypt->multiKeyDecrypt($shareKey, $privateKey);
+			}
 		}
 
 		return '';
@@ -654,6 +570,10 @@ class KeyManager {
 	 */
 	public function deleteAllFileKeys($path) {
 		return $this->keyStorage->deleteAllFileKeys($path);
+	}
+
+	public function deleteLegacyFileKey(string $path): bool {
+		return $this->keyStorage->deleteFileKey($path, $this->fileKeyId, Encryption::ID);
 	}
 
 	/**

@@ -1,62 +1,46 @@
 <!--
-  - @copyright Copyright (c) 2019 Julius Härtl <jus@bitgrid.net>
-  -
-  - @author Julius Härtl <jus@bitgrid.net>
-  -
-  - @license GNU AGPL version 3 or any later version
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU Affero General Public License as
-  - published by the Free Software Foundation, either version 3 of the
-  - License, or (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-  - GNU Affero General Public License for more details.
-  -
-  - You should have received a copy of the GNU Affero General Public License
-  - along with this program. If not, see <http://www.gnu.org/licenses/>.
-  -
-  -->
-
+  - SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <template>
 	<div>
-		<NcMultiselect :value="currentValue"
+		<NcSelect :value="currentValue"
 			:placeholder="t('workflowengine', 'Select a request URL')"
 			label="label"
-			track-by="pattern"
-			group-values="children"
-			group-label="label"
+			:clearable="false"
 			:options="options"
-			:multiple="false"
-			:tagging="false"
 			@input="setValue">
-			<template slot="singleLabel" slot-scope="props">
-				<span class="option__icon" :class="props.option.icon" />
-				<span class="option__title option__title_single">{{ props.option.label }}</span>
+			<template #option="option">
+				<span class="option__icon" :class="option.icon" />
+				<span class="option__title">
+					<NcEllipsisedOption :name="String(option.label)" />
+				</span>
 			</template>
-			<template slot="option" slot-scope="props">
-				<span class="option__icon" :class="props.option.icon" />
-				<span class="option__title">{{ props.option.label }} {{ props.option.$groupLabel }}</span>
+			<template #selected-option="selectedOption">
+				<span class="option__icon" :class="selectedOption.icon" />
+				<span class="option__title">
+					<NcEllipsisedOption :name="String(selectedOption.label)" />
+				</span>
 			</template>
-		</NcMultiselect>
+		</NcSelect>
 		<input v-if="!isPredefined"
 			type="text"
-			:value="currentValue.pattern"
+			:value="currentValue.id"
 			:placeholder="placeholder"
 			@input="updateCustom">
 	</div>
 </template>
 
 <script>
-import NcMultiselect from '@nextcloud/vue/dist/Components/NcMultiselect'
-import valueMixin from '../../mixins/valueMixin'
+import NcEllipsisedOption from '@nextcloud/vue/dist/Components/NcEllipsisedOption.js'
+import NcSelect from '@nextcloud/vue/dist/Components/NcSelect.js'
+import valueMixin from '../../mixins/valueMixin.js'
 
 export default {
 	name: 'RequestURL',
 	components: {
-		NcMultiselect,
+		NcEllipsisedOption,
+		NcSelect,
 	},
 	mixins: [
 		valueMixin,
@@ -66,10 +50,9 @@ export default {
 			newValue: '',
 			predefinedTypes: [
 				{
-					label: t('workflowengine', 'Predefined URLs'),
-					children: [
-						{ pattern: 'webdav', label: t('workflowengine', 'Files WebDAV') },
-					],
+					icon: 'icon-files-dark',
+					id: 'webdav',
+					label: t('workflowengine', 'Files WebDAV'),
 				},
 			],
 		}
@@ -86,23 +69,16 @@ export default {
 		},
 		matchingPredefined() {
 			return this.predefinedTypes
-				.map(groups => groups.children)
-				.flat()
-				.find((type) => this.newValue === type.pattern)
+				.find((type) => this.newValue === type.id)
 		},
 		isPredefined() {
 			return !!this.matchingPredefined
 		},
 		customValue() {
 			return {
-				label: t('workflowengine', 'Others'),
-				children: [
-					{
-						icon: 'icon-settings-dark',
-						label: t('workflowengine', 'Custom URL'),
-						pattern: '',
-					},
-				],
+				icon: 'icon-settings-dark',
+				label: t('workflowengine', 'Custom URL'),
+				id: '',
 			}
 		},
 		currentValue() {
@@ -112,7 +88,7 @@ export default {
 			return {
 				icon: 'icon-settings-dark',
 				label: t('workflowengine', 'Custom URL'),
-				pattern: this.newValue,
+				id: this.newValue,
 			}
 		},
 	},
@@ -125,7 +101,7 @@ export default {
 		setValue(value) {
 			// TODO: check if value requires a regex and set the check operator according to that
 			if (value !== null) {
-				this.newValue = value.pattern
+				this.newValue = value.id
 				this.$emit('input', this.newValue)
 			}
 		},
@@ -137,13 +113,25 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-	.multiselect, input[type='text'] {
+	.v-select,
+	input[type='text'] {
 		width: 100%;
+	}
+
+	input[type='text'] {
+		min-height: 48px;
 	}
 
 	.option__icon {
 		display: inline-block;
 		min-width: 30px;
-		background-position: left;
+		background-position: center;
+		vertical-align: middle;
+	}
+
+	.option__title {
+		display: inline-flex;
+		width: calc(100% - 36px);
+		vertical-align: middle;
 	}
 </style>

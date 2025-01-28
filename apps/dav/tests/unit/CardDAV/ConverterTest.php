@@ -1,29 +1,11 @@
 <?php
+
+declare(strict_types=1);
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\CardDAV;
 
@@ -32,19 +14,33 @@ use OCP\Accounts\IAccount;
 use OCP\Accounts\IAccountManager;
 use OCP\Accounts\IAccountProperty;
 use OCP\IImage;
+use OCP\IURLGenerator;
 use OCP\IUser;
+use OCP\IUserManager;
 use PHPUnit\Framework\MockObject\MockObject;
+use Psr\Log\LoggerInterface;
 use Test\TestCase;
 
 class ConverterTest extends TestCase {
 
 	/** @var IAccountManager|\PHPUnit\Framework\MockObject\MockObject */
 	private $accountManager;
+	/** @var IUserManager|(IUserManager&MockObject)|MockObject */
+	private IUserManager|MockObject $userManager;
+
+	/** @var IURLGenerator */
+	private $urlGenerator;
+
+	/** @var LoggerInterface|\PHPUnit\Framework\MockObject\MockObject */
+	private $logger;
 
 	protected function setUp(): void {
 		parent::setUp();
 
 		$this->accountManager = $this->createMock(IAccountManager::class);
+		$this->userManager = $this->createMock(IUserManager::class);
+		$this->urlGenerator = $this->createMock(IURLGenerator::class);
+		$this->logger = $this->createMock(LoggerInterface::class);
 	}
 
 	/**
@@ -70,17 +66,15 @@ class ConverterTest extends TestCase {
 	public function getAccountManager(IUser $user) {
 		$account = $this->createMock(IAccount::class);
 		$account->expects($this->any())
-			->method('getProperties')
+			->method('getAllProperties')
 			->willReturnCallback(function () use ($user) {
-				return [
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_DISPLAYNAME, $user->getDisplayName(), IAccountManager::SCOPE_FEDERATED),
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_ADDRESS, '', IAccountManager::SCOPE_LOCAL),
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_WEBSITE, '', IAccountManager::SCOPE_LOCAL),
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_EMAIL, $user->getEMailAddress(), IAccountManager::SCOPE_FEDERATED),
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_AVATAR, $user->getAvatarImage(-1)->data(), IAccountManager::SCOPE_FEDERATED),
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_PHONE, '', IAccountManager::SCOPE_LOCAL),
-					$this->getAccountPropertyMock(IAccountManager::PROPERTY_TWITTER, '', IAccountManager::SCOPE_LOCAL),
-				];
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_DISPLAYNAME, $user->getDisplayName(), IAccountManager::SCOPE_FEDERATED);
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_ADDRESS, '', IAccountManager::SCOPE_LOCAL);
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_WEBSITE, '', IAccountManager::SCOPE_LOCAL);
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_EMAIL, $user->getEMailAddress(), IAccountManager::SCOPE_FEDERATED);
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_AVATAR, $user->getAvatarImage(-1)->data(), IAccountManager::SCOPE_FEDERATED);
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_PHONE, '', IAccountManager::SCOPE_LOCAL);
+				yield $this->getAccountPropertyMock(IAccountManager::PROPERTY_TWITTER, '', IAccountManager::SCOPE_LOCAL);
 			});
 
 		$accountManager = $this->getMockBuilder(IAccountManager::class)
@@ -94,11 +88,11 @@ class ConverterTest extends TestCase {
 	/**
 	 * @dataProvider providesNewUsers
 	 */
-	public function testCreation($expectedVCard, $displayName = null, $eMailAddress = null, $cloudId = null) {
+	public function testCreation($expectedVCard, $displayName = null, $eMailAddress = null, $cloudId = null): void {
 		$user = $this->getUserMock((string)$displayName, $eMailAddress, $cloudId);
 		$accountManager = $this->getAccountManager($user);
 
-		$converter = new Converter($accountManager);
+		$converter = new Converter($accountManager, $this->userManager, $this->urlGenerator, $this->logger);
 		$vCard = $converter->createCardFromUser($user);
 		if ($expectedVCard !== null) {
 			$this->assertInstanceOf('Sabre\VObject\Component\VCard', $vCard);
@@ -107,6 +101,29 @@ class ConverterTest extends TestCase {
 		} else {
 			$this->assertSame($expectedVCard, $vCard);
 		}
+	}
+
+	public function testManagerProp(): void {
+		$user = $this->getUserMock('user', 'user@domain.tld', 'user@cloud.domain.tld');
+		$user->method('getManagerUids')
+			->willReturn(['mgr']);
+		$this->userManager->expects(self::once())
+			->method('getDisplayName')
+			->with('mgr')
+			->willReturn('Manager');
+		$accountManager = $this->getAccountManager($user);
+
+		$converter = new Converter($accountManager, $this->userManager, $this->urlGenerator, $this->logger);
+		$vCard = $converter->createCardFromUser($user);
+
+		$this->compareData(
+			[
+				'cloud' => 'user@cloud.domain.tld',
+				'email' => 'user@domain.tld',
+				'x-managersname' => 'Manager',
+			],
+			$vCard->jsonSerialize()
+		);
 	}
 
 	protected function compareData($expected, $data) {
@@ -151,8 +168,8 @@ class ConverterTest extends TestCase {
 					'fn' => 'Dr. Foo Bar',
 					'photo' => 'MTIzNDU2Nzg5',
 				],
-				"Dr. Foo Bar",
-				"foo@bar.net",
+				'Dr. Foo Bar',
+				'foo@bar.net',
 				'foo@cloud.net'
 			],
 			[
@@ -161,9 +178,9 @@ class ConverterTest extends TestCase {
 					'fn' => 'Dr. Foo Bar',
 					'photo' => 'MTIzNDU2Nzg5',
 				],
-				"Dr. Foo Bar",
+				'Dr. Foo Bar',
 				null,
-				"foo@cloud.net"
+				'foo@cloud.net'
 			],
 			[
 				[
@@ -183,8 +200,8 @@ class ConverterTest extends TestCase {
 	 * @param $expected
 	 * @param $fullName
 	 */
-	public function testNameSplitter($expected, $fullName) {
-		$converter = new Converter($this->accountManager);
+	public function testNameSplitter($expected, $fullName): void {
+		$converter = new Converter($this->accountManager, $this->userManager, $this->urlGenerator, $this->logger);
 		$r = $converter->splitFullName($fullName);
 		$r = implode(';', $r);
 		$this->assertEquals($expected, $r);

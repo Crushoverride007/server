@@ -1,31 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Lukas Reschke <lukas@statuscode.ch>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author zulan <git@zulan.net>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\Settings\Mailer;
 
@@ -35,31 +11,13 @@ use OCP\IConfig;
 use OCP\IURLGenerator;
 use OCP\IUser;
 use OCP\L10N\IFactory;
+use OCP\Mail\Headers\AutoSubmitted;
 use OCP\Mail\IEMailTemplate;
 use OCP\Mail\IMailer;
 use OCP\Security\ICrypto;
 use OCP\Security\ISecureRandom;
 
 class NewUserMailHelper {
-	/** @var Defaults */
-	private $themingDefaults;
-	/** @var IURLGenerator */
-	private $urlGenerator;
-	/** @var IFactory */
-	private $l10nFactory;
-	/** @var IMailer */
-	private $mailer;
-	/** @var ISecureRandom */
-	private $secureRandom;
-	/** @var ITimeFactory */
-	private $timeFactory;
-	/** @var IConfig */
-	private $config;
-	/** @var ICrypto */
-	private $crypto;
-	/** @var string */
-	private $fromAddress;
-
 	/**
 	 * @param Defaults $themingDefaults
 	 * @param IURLGenerator $urlGenerator
@@ -71,24 +29,17 @@ class NewUserMailHelper {
 	 * @param ICrypto $crypto
 	 * @param string $fromAddress
 	 */
-	public function __construct(Defaults $themingDefaults,
-								IURLGenerator $urlGenerator,
-								IFactory $l10nFactory,
-								IMailer $mailer,
-								ISecureRandom $secureRandom,
-								ITimeFactory $timeFactory,
-								IConfig $config,
-								ICrypto $crypto,
-								$fromAddress) {
-		$this->themingDefaults = $themingDefaults;
-		$this->urlGenerator = $urlGenerator;
-		$this->l10nFactory = $l10nFactory;
-		$this->mailer = $mailer;
-		$this->secureRandom = $secureRandom;
-		$this->timeFactory = $timeFactory;
-		$this->config = $config;
-		$this->crypto = $crypto;
-		$this->fromAddress = $fromAddress;
+	public function __construct(
+		private Defaults $themingDefaults,
+		private IURLGenerator $urlGenerator,
+		private IFactory $l10nFactory,
+		private IMailer $mailer,
+		private ISecureRandom $secureRandom,
+		private ITimeFactory $timeFactory,
+		private IConfig $config,
+		private ICrypto $crypto,
+		private $fromAddress,
+	) {
 	}
 
 	/**
@@ -107,7 +58,7 @@ class NewUserMailHelper {
 				ISecureRandom::CHAR_ALPHANUMERIC
 			);
 			$tokenValue = $this->timeFactory->getTime() . ':' . $token;
-			$mailAddress = (null !== $user->getEMailAddress()) ? $user->getEMailAddress() : '';
+			$mailAddress = ($user->getEMailAddress() !== null) ? $user->getEMailAddress() : '';
 			$encryptedValue = $this->crypto->encrypt($tokenValue, $mailAddress . $this->config->getSystemValue('secret'));
 			$this->config->setUserValue($user->getUID(), 'core', 'lostpassword', $encryptedValue);
 			$link = $this->urlGenerator->linkToRouteAbsolute('core.lost.resetform', ['userId' => $user->getUID(), 'token' => $token]);
@@ -133,7 +84,7 @@ class NewUserMailHelper {
 		}
 		$emailTemplate->addBodyText($l10n->t('Welcome to your %s account, you can add, protect, and share your data.', [$this->themingDefaults->getName()]));
 		if ($user->getBackendClassName() !== 'LDAP') {
-			$emailTemplate->addBodyText($l10n->t('Your username is: %s', [$userId]));
+			$emailTemplate->addBodyText($l10n->t('Your Login is: %s', [$userId]));
 		}
 		if ($generatePasswordResetToken) {
 			$leftButtonText = $l10n->t('Set your password');
@@ -169,7 +120,7 @@ class NewUserMailHelper {
 	 * @throws \Exception If mail could not be sent
 	 */
 	public function sendMail(IUser $user,
-							 IEMailTemplate $emailTemplate): void {
+		IEMailTemplate $emailTemplate): void {
 
 		// Be sure to never try to send to an empty e-mail
 		$email = $user->getEMailAddress();
@@ -181,6 +132,7 @@ class NewUserMailHelper {
 		$message->setTo([$email => $user->getDisplayName()]);
 		$message->setFrom([$this->fromAddress => $this->themingDefaults->getName()]);
 		$message->useTemplate($emailTemplate);
+		$message->setAutoSubmitted(AutoSubmitted::VALUE_AUTO_GENERATED);
 		$this->mailer->send($message);
 	}
 }

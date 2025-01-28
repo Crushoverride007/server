@@ -1,46 +1,24 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Jakob Sack <mail@jakobsack.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Markus Goetz <markus@woboq.com>
- * @author Michael Gapczynski <GapczynskiM@gmail.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Connector\Sabre;
 
 use Exception;
 use OC\Authentication\Exceptions\PasswordLoginForbiddenException;
 use OC\Authentication\TwoFactorAuth\Manager;
-use OC\Security\Bruteforce\Throttler;
 use OC\User\Session;
 use OCA\DAV\Connector\Sabre\Exception\PasswordLoginForbidden;
+use OCA\DAV\Connector\Sabre\Exception\TooManyRequests;
+use OCP\AppFramework\Http;
+use OCP\Defaults;
 use OCP\IRequest;
 use OCP\ISession;
+use OCP\Security\Bruteforce\IThrottler;
+use OCP\Security\Bruteforce\MaxDelayReached;
 use Psr\Log\LoggerInterface;
 use Sabre\DAV\Auth\Backend\AbstractBasic;
 use Sabre\DAV\Exception\NotAuthenticated;
@@ -50,30 +28,21 @@ use Sabre\HTTP\ResponseInterface;
 
 class Auth extends AbstractBasic {
 	public const DAV_AUTHENTICATED = 'AUTHENTICATED_TO_DAV_BACKEND';
-
-	private ISession $session;
-	private Session $userSession;
-	private IRequest $request;
 	private ?string $currentUser = null;
-	private Manager $twoFactorManager;
-	private Throttler $throttler;
 
-	public function __construct(ISession $session,
-								Session $userSession,
-								IRequest $request,
-								Manager $twoFactorManager,
-								Throttler $throttler,
-								string $principalPrefix = 'principals/users/') {
-		$this->session = $session;
-		$this->userSession = $userSession;
-		$this->twoFactorManager = $twoFactorManager;
-		$this->request = $request;
-		$this->throttler = $throttler;
+	public function __construct(
+		private ISession $session,
+		private Session $userSession,
+		private IRequest $request,
+		private Manager $twoFactorManager,
+		private IThrottler $throttler,
+		string $principalPrefix = 'principals/users/',
+	) {
 		$this->principalPrefix = $principalPrefix;
 
 		// setup realm
-		$defaults = new \OCP\Defaults();
-		$this->realm = $defaults->getName();
+		$defaults = new Defaults();
+		$this->realm = $defaults->getName() ?: 'Nextcloud';
 	}
 
 	/**
@@ -104,14 +73,11 @@ class Auth extends AbstractBasic {
 		if ($this->userSession->isLoggedIn() &&
 			$this->isDavAuthenticated($this->userSession->getUser()->getUID())
 		) {
-			\OC_Util::setupFS($this->userSession->getUser()->getUID());
 			$this->session->close();
 			return true;
 		} else {
-			\OC_Util::setupFS(); //login hooks may need early access to the filesystem
 			try {
 				if ($this->userSession->logClientIn($username, $password, $this->request, $this->throttler)) {
-					\OC_Util::setupFS($this->userSession->getUser()->getUID());
 					$this->session->set(self::DAV_AUTHENTICATED, $this->userSession->getUser()->getUID());
 					$this->session->close();
 					return true;
@@ -122,6 +88,9 @@ class Auth extends AbstractBasic {
 			} catch (PasswordLoginForbiddenException $ex) {
 				$this->session->close();
 				throw new PasswordLoginForbidden();
+			} catch (MaxDelayReached $ex) {
+				$this->session->close();
+				throw new TooManyRequests();
 			}
 		}
 	}
@@ -139,7 +108,7 @@ class Auth extends AbstractBasic {
 		} catch (Exception $e) {
 			$class = get_class($e);
 			$msg = $e->getMessage();
-			\OC::$server->get(LoggerInterface::class)->error($e->getMessage(), ['exception' => $e]);
+			\OCP\Server::get(LoggerInterface::class)->error($e->getMessage(), ['exception' => $e]);
 			throw new ServiceUnavailable("$class: $msg");
 		}
 	}
@@ -194,7 +163,7 @@ class Auth extends AbstractBasic {
 			if ($this->request->getMethod() === 'POST') {
 				$forcedLogout = true;
 			} else {
-				$response->setStatus(401);
+				$response->setStatus(Http::STATUS_UNAUTHORIZED);
 				throw new \Sabre\DAV\Exception\NotAuthenticated('CSRF check not passed.');
 			}
 		}
@@ -209,7 +178,7 @@ class Auth extends AbstractBasic {
 				//Fix for broken webdav clients
 				($this->userSession->isLoggedIn() && is_null($this->session->get(self::DAV_AUTHENTICATED))) ||
 				//Well behaved clients that only send the cookie are allowed
-				($this->userSession->isLoggedIn() && $this->session->get(self::DAV_AUTHENTICATED) === $this->userSession->getUser()->getUID() && $request->getHeader('Authorization') === null) ||
+				($this->userSession->isLoggedIn() && $this->session->get(self::DAV_AUTHENTICATED) === $this->userSession->getUser()->getUID() && empty($request->getHeader('Authorization'))) ||
 				\OC_User::handleApacheAuth()
 			) {
 				$user = $this->userSession->getUser()->getUID();
@@ -219,18 +188,16 @@ class Auth extends AbstractBasic {
 			}
 		}
 
-		if (!$this->userSession->isLoggedIn() && in_array('XMLHttpRequest', explode(',', $request->getHeader('X-Requested-With') ?? ''))) {
-			// do not re-authenticate over ajax, use dummy auth name to prevent browser popup
-			$response->addHeader('WWW-Authenticate','DummyBasic realm="' . $this->realm . '"');
-			$response->setStatus(401);
-			throw new \Sabre\DAV\Exception\NotAuthenticated('Cannot authenticate over ajax calls');
-		}
-
 		$data = parent::check($request, $response);
 		if ($data[0] === true) {
 			$startPos = strrpos($data[1], '/') + 1;
 			$user = $this->userSession->getUser()->getUID();
 			$data[1] = substr_replace($data[1], $user, $startPos);
+		} elseif (in_array('XMLHttpRequest', explode(',', $request->getHeader('X-Requested-With') ?? ''))) {
+			// For ajax requests use dummy auth name to prevent browser popup in case of invalid creditials
+			$response->addHeader('WWW-Authenticate', 'DummyBasic realm="' . $this->realm . '"');
+			$response->setStatus(Http::STATUS_UNAUTHORIZED);
+			throw new \Sabre\DAV\Exception\NotAuthenticated('Cannot authenticate over ajax calls');
 		}
 		return $data;
 	}

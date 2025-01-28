@@ -1,116 +1,17 @@
-window.addEventListener('DOMContentLoaded', () => {
-	$('#excludedGroups,#linksExcludedGroups,#passwordsExcludedGroups').each(function(index, element) {
-		OC.Settings.setupGroupsSelect($(element))
-		$(element).change((ev) => {
-			let groups = ev.val || []
-			groups = JSON.stringify(groups)
-			OCP.AppConfig.setValue('core', $(this).attr('name'), groups)
-		})
-	})
+/**
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 
-	$('#loglevel').change(() => {
-		$.post(OC.generateUrl('/settings/admin/log/level'), { level: $(this).val() }, () => {
+import { generateUrl } from '@nextcloud/router'
+import $ from 'jquery'
+import axios from '@nextcloud/axios'
+
+window.addEventListener('DOMContentLoaded', () => {
+	$('#loglevel').change(function() {
+		$.post(generateUrl('/settings/admin/log/level'), { level: $(this).val() }, () => {
 			OC.Log.reload()
 		})
-	})
-
-	$('#shareAPIEnabled').change(() => {
-		$('#shareAPI p:not(#enable)').toggleClass('hidden', !this.checked)
-	})
-
-	$('#shareapiExpireAfterNDays').on('input', function() {
-		this.value = this.value.replace(/\D/g, '')
-	})
-
-	$('#shareAPI input:not(.noJSAutoUpdate)').change(function() {
-		let value = $(this).val()
-		if ($(this).attr('type') === 'checkbox') {
-			if (this.checked) {
-				value = 'yes'
-			} else {
-				value = 'no'
-			}
-		}
-		OCP.AppConfig.setValue('core', $(this).attr('name'), value)
-	})
-
-	$('#shareapiDefaultExpireDate').change(function() {
-		$('setDefaultExpireDate').toggleClass('hidden', !this.checked)
-	})
-
-	$('#shareapiDefaultInternalExpireDate').change(function() {
-		$('#setDefaultInternalExpireDate').toggleClass('hidden', !this.checked)
-	})
-
-	$('#shareapiDefaultRemoteExpireDate').change(function() {
-		$('#setDefaultRemoteExpireDate').toggleClass('hidden', !this.checked)
-	})
-
-	$('#enforceLinkPassword').change(function() {
-		$('#selectPasswordsExcludedGroups').toggleClass('hidden', !this.checked)
-	})
-
-	$('#publicShareDisclaimer').change(function() {
-		$('#publicShareDisclaimerText').toggleClass('hidden', !this.checked)
-		if (!this.checked) {
-			savePublicShareDisclaimerText('')
-		}
-	})
-
-	$('#shareApiDefaultPermissionsSection input').change(function(ev) {
-		const $el = $('#shareApiDefaultPermissions')
-		const $target = $(ev.target)
-
-		let value = $el.val()
-		if ($target.is(':checked')) {
-			value = value | $target.val()
-		} else {
-			value = value & ~$target.val()
-		}
-
-		// always set read permission
-		value |= OC.PERMISSION_READ
-
-		// this will trigger the field's change event and will save it
-		$el.val(value).change()
-
-		ev.preventDefault()
-
-		return false
-	})
-
-	const savePublicShareDisclaimerText = _.debounce(function(value) {
-		const options = {
-			success: () => {
-				OC.msg.finishedSuccess('#publicShareDisclaimerStatus', t('settings', 'Saved'))
-			},
-			error: () => {
-				OC.msg.finishedError('#publicShareDisclaimerStatus', t('settings', 'Not saved'))
-			},
-		}
-
-		OC.msg.startSaving('#publicShareDisclaimerStatus')
-		if (_.isString(value) && value !== '') {
-			OCP.AppConfig.setValue('core', 'shareapi_public_link_disclaimertext', value, options)
-		} else {
-			$('#publicShareDisclaimerText').val('')
-			OCP.AppConfig.deleteKey('core', 'shareapi_public_link_disclaimertext', options)
-		}
-	}, 500)
-
-	$('#publicShareDisclaimerText').on('change, keyup', function() {
-		savePublicShareDisclaimerText(this.value)
-	})
-
-	$('#shareapi_allow_share_dialog_user_enumeration').on('change', function() {
-		$('#shareapi_restrict_user_enumeration_to_group_setting').toggleClass('hidden', !this.checked)
-		$('#shareapi_restrict_user_enumeration_to_phone_setting').toggleClass('hidden', !this.checked)
-		$('#shareapi_restrict_user_enumeration_combinewarning_setting').toggleClass('hidden', !this.checked)
-	})
-
-	$('#allowLinks').change(function() {
-		$('#publicLinkSettings').toggleClass('hidden', !this.checked)
-		$('#setDefaultExpireDate').toggleClass('hidden', !(this.checked && $('#shareapiDefaultExpireDate')[0].checked))
 	})
 
 	$('#mail_smtpauth').change(function() {
@@ -148,17 +49,12 @@ window.addEventListener('DOMContentLoaded', () => {
 		}
 
 		OC.msg.startSaving('#mail_settings_msg')
-		$.ajax({
-			url: OC.generateUrl('/settings/admin/mailsettings'),
-			type: 'POST',
-			data: $('#mail_general_settings_form').serialize(),
-			success: () => {
+		axios.post(generateUrl('/settings/admin/mailsettings'), $('#mail_general_settings_form').serialize())
+			.then(() => {
 				OC.msg.finishedSuccess('#mail_settings_msg', t('settings', 'Saved'))
-			},
-			error: (xhr) => {
-				OC.msg.finishedError('#mail_settings_msg', xhr.responseJSON)
-			},
-		})
+			}).catch((error) => {
+				OC.msg.finishedError('#mail_settings_msg', error)
+			})
 	}
 
 	const toggleEmailCredentials = function() {
@@ -168,17 +64,12 @@ window.addEventListener('DOMContentLoaded', () => {
 		}
 
 		OC.msg.startSaving('#mail_settings_msg')
-		$.ajax({
-			url: OC.generateUrl('/settings/admin/mailsettings/credentials'),
-			type: 'POST',
-			data: $('#mail_credentials_settings').serialize(),
-			success: () => {
+		axios.post(generateUrl('/settings/admin/mailsettings/credentials'), $('#mail_credentials_settings').serialize())
+			.then(() => {
 				OC.msg.finishedSuccess('#mail_settings_msg', t('settings', 'Saved'))
-			},
-			error: (xhr) => {
-				OC.msg.finishedError('#mail_settings_msg', xhr.responseJSON)
-			},
-		})
+			}).catch((error) => {
+				OC.msg.finishedError('#mail_settings_msg', error)
+			})
 	}
 
 	$('#mail_general_settings_form').change(changeEmailSettings)
@@ -194,42 +85,19 @@ window.addEventListener('DOMContentLoaded', () => {
 		event.preventDefault()
 		OC.msg.startAction('#sendtestmail_msg', t('settings', 'Sending…'))
 
-		$.ajax({
-			url: OC.generateUrl('/settings/admin/mailtest'),
-			type: 'POST',
-			success: () => {
+		axios.post(generateUrl('/settings/admin/mailtest'))
+			.then(() => {
 				OC.msg.finishedSuccess('#sendtestmail_msg', t('settings', 'Email sent'))
-			},
-			error: (xhr) => {
-				OC.msg.finishedError('#sendtestmail_msg', xhr.responseJSON)
-			},
-		})
-	})
-
-	$('#allowGroupSharing').change(() => {
-		$('#allowGroupSharing').toggleClass('hidden', !this.checked)
-	})
-
-	$('#shareapiExcludeGroups').change(() => {
-		$('#selectExcludedGroups').toggleClass('hidden', !this.checked)
+			}).catch((error) => {
+				OC.msg.finishedError('#sendtestmail_msg', error)
+			})
 	})
 
 	const setupChecks = () => {
 		// run setup checks then gather error messages
 		$.when(
-			OC.SetupChecks.checkWebDAV(),
-			OC.SetupChecks.checkWellKnownUrl('GET', '/.well-known/webfinger', OC.theme.docPlaceholderUrl, $('#postsetupchecks').data('check-wellknown') === true, [200, 404], true),
-			OC.SetupChecks.checkWellKnownUrl('GET', '/.well-known/nodeinfo', OC.theme.docPlaceholderUrl, $('#postsetupchecks').data('check-wellknown') === true, [200, 404], true),
-			OC.SetupChecks.checkWellKnownUrl('PROPFIND', '/.well-known/caldav', OC.theme.docPlaceholderUrl, $('#postsetupchecks').data('check-wellknown') === true),
-			OC.SetupChecks.checkWellKnownUrl('PROPFIND', '/.well-known/carddav', OC.theme.docPlaceholderUrl, $('#postsetupchecks').data('check-wellknown') === true),
-			OC.SetupChecks.checkProviderUrl(OC.getRootPath() + '/ocm-provider/', OC.theme.docPlaceholderUrl, $('#postsetupchecks').data('check-wellknown') === true),
-			OC.SetupChecks.checkProviderUrl(OC.getRootPath() + '/ocs-provider/', OC.theme.docPlaceholderUrl, $('#postsetupchecks').data('check-wellknown') === true),
 			OC.SetupChecks.checkSetup(),
-			OC.SetupChecks.checkGeneric(),
-			OC.SetupChecks.checkWOFF2Loading(OC.filePath('core', '', 'fonts/NotoSans-Regular-latin.woff2'), OC.theme.docPlaceholderUrl),
-			OC.SetupChecks.checkDataProtected()
-		).then((check1, check2, check3, check4, check5, check6, check7, check8, check9, check10, check11) => {
-			const messages = [].concat(check1, check2, check3, check4, check5, check6, check7, check8, check9, check10, check11)
+		).then((messages) => {
 			const $el = $('#postsetupchecks')
 			$('#security-warning-state-loading').addClass('hidden')
 

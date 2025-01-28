@@ -2,23 +2,8 @@
 
 declare(strict_types=1);
 /**
- * @copyright Copyright (c) 2022 Robin Appelman <robin@icewind.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OC\User;
@@ -30,20 +15,33 @@ use OCP\UserInterface;
 class LazyUser implements IUser {
 	private ?IUser $user = null;
 	private string $uid;
+	private ?string $displayName;
 	private IUserManager $userManager;
+	private ?UserInterface $backend;
 
-	public function __construct(string $uid, IUserManager $userManager) {
+	public function __construct(string $uid, IUserManager $userManager, ?string $displayName = null, ?UserInterface $backend = null) {
 		$this->uid = $uid;
 		$this->userManager = $userManager;
+		$this->displayName = $displayName;
+		$this->backend = $backend;
 	}
 
 	private function getUser(): IUser {
 		if ($this->user === null) {
-			$this->user = $this->userManager->get($this->uid);
+			if ($this->backend) {
+				/** @var \OC\User\Manager $manager */
+				$manager = $this->userManager;
+				$this->user = $manager->getUserObject($this->uid, $this->backend);
+			} else {
+				$this->user = $this->userManager->get($this->uid);
+			}
 		}
-		/** @var IUser */
-		$user = $this->user;
-		return $user;
+
+		if ($this->user === null) {
+			throw new NoUserException('User not found in backend');
+		}
+
+		return $this->user;
 	}
 
 	public function getUID() {
@@ -51,6 +49,10 @@ class LazyUser implements IUser {
 	}
 
 	public function getDisplayName() {
+		if ($this->displayName) {
+			return $this->displayName;
+		}
+
 		return $this->userManager->getDisplayName($this->uid) ?? $this->uid;
 	}
 
@@ -58,11 +60,15 @@ class LazyUser implements IUser {
 		return $this->getUser()->setDisplayName($displayName);
 	}
 
-	public function getLastLogin() {
+	public function getLastLogin(): int {
 		return $this->getUser()->getLastLogin();
 	}
 
-	public function updateLastLoginTimestamp() {
+	public function getFirstLogin(): int {
+		return $this->getUser()->getFirstLogin();
+	}
+
+	public function updateLastLoginTimestamp(): bool {
 		return $this->getUser()->updateLastLoginTimestamp();
 	}
 
@@ -72,6 +78,14 @@ class LazyUser implements IUser {
 
 	public function setPassword($password, $recoveryPassword = null) {
 		return $this->getUser()->setPassword($password, $recoveryPassword);
+	}
+
+	public function getPasswordHash(): ?string {
+		return $this->getUser()->getPasswordHash();
+	}
+
+	public function setPasswordHash(string $passwordHash): bool {
+		return $this->getUser()->setPasswordHash($passwordHash);
 	}
 
 	public function getHome() {
@@ -144,5 +158,13 @@ class LazyUser implements IUser {
 
 	public function setQuota($quota) {
 		$this->getUser()->setQuota($quota);
+	}
+
+	public function getManagerUids(): array {
+		return $this->getUser()->getManagerUids();
+	}
+
+	public function setManagerUids(array $uids): void {
+		$this->getUser()->setManagerUids($uids);
 	}
 }

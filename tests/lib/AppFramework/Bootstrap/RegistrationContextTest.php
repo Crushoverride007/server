@@ -3,30 +3,15 @@
 declare(strict_types=1);
 
 /**
- * @copyright 2020 Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @author 2020 Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace lib\AppFramework\Bootstrap;
 
 use OC\AppFramework\Bootstrap\RegistrationContext;
 use OC\AppFramework\Bootstrap\ServiceRegistration;
+use OC\Core\Middleware\TwoFactorMiddleware;
 use OCP\AppFramework\App;
 use OCP\AppFramework\IAppContainer;
 use OCP\EventDispatcher\IEventDispatcher;
@@ -35,7 +20,6 @@ use Psr\Log\LoggerInterface;
 use Test\TestCase;
 
 class RegistrationContextTest extends TestCase {
-
 	/** @var LoggerInterface|MockObject */
 	private $logger;
 
@@ -146,24 +130,6 @@ class RegistrationContextTest extends TestCase {
 		]);
 	}
 
-	public function testRegisterMiddleware(): void {
-		$app = $this->createMock(App::class);
-		$name = 'abc';
-		$container = $this->createMock(IAppContainer::class);
-		$app->method('getContainer')
-			->willReturn($container);
-		$container->expects($this->once())
-			->method('registerMiddleware')
-			->with($name);
-		$this->logger->expects($this->never())
-			->method('error');
-
-		$this->context->for('myapp')->registerMiddleware($name);
-		$this->context->delegateMiddlewareRegistrations([
-			'myapp' => $app,
-		]);
-	}
-
 	public function testRegisterUserMigrator(): void {
 		$appIdA = 'myapp';
 		$migratorClassA = 'OCA\App\UserMigration\AppMigrator';
@@ -195,5 +161,15 @@ class RegistrationContextTest extends TestCase {
 			[true],
 			[false]
 		];
+	}
+
+	public function testGetMiddlewareRegistrations(): void {
+		$this->context->registerMiddleware('core', TwoFactorMiddleware::class, false);
+
+		$registrations = $this->context->getMiddlewareRegistrations();
+
+		self::assertNotEmpty($registrations);
+		self::assertSame('core', $registrations[0]->getAppId());
+		self::assertSame(TwoFactorMiddleware::class, $registrations[0]->getService());
 	}
 }

@@ -3,25 +3,8 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2020, Georg Ehrke
- *
- * @author Georg Ehrke <oc.list@georgehrke.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\UserStatus\Dashboard;
 
@@ -30,10 +13,11 @@ use OCA\UserStatus\Db\UserStatus;
 use OCA\UserStatus\Service\StatusService;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\Dashboard\IAPIWidget;
-use OCP\Dashboard\IButtonWidget;
+use OCP\Dashboard\IAPIWidgetV2;
 use OCP\Dashboard\IIconWidget;
 use OCP\Dashboard\IOptionWidget;
 use OCP\Dashboard\Model\WidgetItem;
+use OCP\Dashboard\Model\WidgetItems;
 use OCP\Dashboard\Model\WidgetOptions;
 use OCP\IDateTimeFormatter;
 use OCP\IL10N;
@@ -41,22 +25,13 @@ use OCP\IURLGenerator;
 use OCP\IUserManager;
 use OCP\IUserSession;
 use OCP\UserStatus\IUserStatus;
-use OCP\Util;
 
 /**
  * Class UserStatusWidget
  *
  * @package OCA\UserStatus
  */
-class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
-	private IL10N $l10n;
-	private IDateTimeFormatter $dateTimeFormatter;
-	private IURLGenerator $urlGenerator;
-	private IInitialState $initialStateService;
-	private IUserManager $userManager;
-	private IUserSession $userSession;
-	private StatusService $service;
-
+class UserStatusWidget implements IAPIWidget, IAPIWidgetV2, IIconWidget, IOptionWidget {
 	/**
 	 * UserStatusWidget constructor
 	 *
@@ -68,20 +43,15 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 	 * @param IUserSession $userSession
 	 * @param StatusService $service
 	 */
-	public function __construct(IL10N $l10n,
-								IDateTimeFormatter $dateTimeFormatter,
-								IURLGenerator $urlGenerator,
-								IInitialState $initialStateService,
-								IUserManager $userManager,
-								IUserSession $userSession,
-								StatusService $service) {
-		$this->l10n = $l10n;
-		$this->dateTimeFormatter = $dateTimeFormatter;
-		$this->urlGenerator = $urlGenerator;
-		$this->initialStateService = $initialStateService;
-		$this->userManager = $userManager;
-		$this->userSession = $userSession;
-		$this->service = $service;
+	public function __construct(
+		private IL10N $l10n,
+		private IDateTimeFormatter $dateTimeFormatter,
+		private IURLGenerator $urlGenerator,
+		private IInitialState $initialStateService,
+		private IUserManager $userManager,
+		private IUserSession $userSession,
+		private StatusService $service,
+	) {
 	}
 
 	/**
@@ -109,7 +79,7 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 	 * @inheritDoc
 	 */
 	public function getIconClass(): string {
-		return 'icon-user-status';
+		return 'icon-user-status-dark';
 	}
 
 	/**
@@ -117,7 +87,7 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 	 */
 	public function getIconUrl(): string {
 		return $this->urlGenerator->getAbsoluteURL(
-			$this->urlGenerator->imagePath(Application::APP_ID, 'app.svg')
+			$this->urlGenerator->imagePath(Application::APP_ID, 'app-dark.svg')
 		);
 	}
 
@@ -132,17 +102,6 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 	 * @inheritDoc
 	 */
 	public function load(): void {
-		Util::addScript(Application::APP_ID, 'dashboard');
-
-		$currentUser = $this->userSession->getUser();
-		if ($currentUser === null) {
-			$this->initialStateService->provideInitialState('dashboard_data', []);
-			return;
-		}
-		$currentUserId = $currentUser->getUID();
-
-		$widgetItemsData = $this->getWidgetData($currentUserId);
-		$this->initialStateService->provideInitialState('dashboard_data', $widgetItemsData);
 	}
 
 	private function getWidgetData(string $userId, ?string $since = null, int $limit = 7): array {
@@ -152,7 +111,7 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 				$this->service->findAllRecentStatusChanges($limit + 1, 0),
 				static function (UserStatus $status) use ($userId, $since): bool {
 					return $status->getUserId() !== $userId
-						&& ($since === null || $status->getStatusTimestamp() > (int) $since);
+						&& ($since === null || $status->getStatusTimestamp() > (int)$since);
 				}
 			),
 			0,
@@ -173,7 +132,7 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 					: $status->getStatus(),
 				'icon' => $status->getCustomIcon(),
 				'message' => $status->getCustomMessage(),
-				'timestamp' => $status->getStatusTimestamp(),
+				'timestamp' => $status->getStatusMessageTimestamp(),
 			];
 		}, $recentStatusUpdates);
 	}
@@ -184,21 +143,32 @@ class UserStatusWidget implements IAPIWidget, IIconWidget, IOptionWidget {
 	public function getItems(string $userId, ?string $since = null, int $limit = 7): array {
 		$widgetItemsData = $this->getWidgetData($userId, $since, $limit);
 
-		return array_map(function(array $widgetData) {
+		return array_values(array_map(function (array $widgetData) {
 			$formattedDate = $this->dateTimeFormatter->formatTimeSpan($widgetData['timestamp']);
 			return new WidgetItem(
 				$widgetData['displayName'],
 				$widgetData['icon'] . ($widgetData['icon'] ? ' ' : '') . $widgetData['message'] . ', ' . $formattedDate,
 				// https://nextcloud.local/index.php/u/julien
 				$this->urlGenerator->getAbsoluteURL(
-					$this->urlGenerator->linkToRoute('core.ProfilePage.index', ['targetUserId' => $widgetData['userId']])
+					$this->urlGenerator->linkToRoute('profile.ProfilePage.index', ['targetUserId' => $widgetData['userId']])
 				),
 				$this->urlGenerator->getAbsoluteURL(
 					$this->urlGenerator->linkToRoute('core.avatar.getAvatar', ['userId' => $widgetData['userId'], 'size' => 44])
 				),
-				(string) $widgetData['timestamp']
+				(string)$widgetData['timestamp']
 			);
-		}, $widgetItemsData);
+		}, $widgetItemsData));
+	}
+
+	/**
+	 * @inheritDoc
+	 */
+	public function getItemsV2(string $userId, ?string $since = null, int $limit = 7): WidgetItems {
+		$items = $this->getItems($userId, $since, $limit);
+		return new WidgetItems(
+			$items,
+			count($items) === 0 ? $this->l10n->t('No recent status changes') : '',
+		);
 	}
 
 	public function getWidgetOptions(): WidgetOptions {

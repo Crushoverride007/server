@@ -1,9 +1,8 @@
 <?php
 /**
- * Copyright (c) 2014 Bjoern Schiessle <schiessle@owncloud.com>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test;
@@ -13,7 +12,6 @@ use OCP\ICacheFactory;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\IURLGenerator;
-use OCP\IUser;
 use OCP\IUserSession;
 
 /**
@@ -22,7 +20,6 @@ use OCP\IUserSession;
  * @package Test
  */
 class UrlGeneratorTest extends \Test\TestCase {
-
 	/** @var \PHPUnit\Framework\MockObject\MockObject|IConfig */
 	private $config;
 	/** @var \PHPUnit\Framework\MockObject\MockObject|IUserSession */
@@ -74,7 +71,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 	 * test linkTo URL construction
 	 * @dataProvider provideDocRootAppUrlParts
 	 */
-	public function testLinkToDocRoot($app, $file, $args, $expectedResult) {
+	public function testLinkToDocRoot($app, $file, $args, $expectedResult): void {
 		\OC::$WEBROOT = '';
 		$result = $this->urlGenerator->linkTo($app, $file, $args);
 		$this->assertEquals($expectedResult, $result);
@@ -85,7 +82,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 	 * test linkTo URL construction in sub directory
 	 * @dataProvider provideSubDirAppUrlParts
 	 */
-	public function testLinkToSubDir($app, $file, $args, $expectedResult) {
+	public function testLinkToSubDir($app, $file, $args, $expectedResult): void {
 		\OC::$WEBROOT = '/nextcloud';
 		$result = $this->urlGenerator->linkTo($app, $file, $args);
 		$this->assertEquals($expectedResult, $result);
@@ -94,7 +91,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 	/**
 	 * @dataProvider provideRoutes
 	 */
-	public function testLinkToRouteAbsolute($route, $expected) {
+	public function testLinkToRouteAbsolute($route, $expected): void {
 		$this->mockBaseUrl();
 		\OC::$WEBROOT = '/nextcloud';
 		$this->router->expects($this->once())
@@ -110,25 +107,25 @@ class UrlGeneratorTest extends \Test\TestCase {
 		$this->assertEquals($expected, $result);
 	}
 
-	public function provideRoutes() {
+	public static function provideRoutes() {
 		return [
 			['core.Preview.getPreview', 'http://localhost/nextcloud/index.php/core/preview.png'],
 			['cloud_federation_api.requesthandlercontroller.addShare', 'http://localhost/nextcloud/index.php/ocm/shares'],
 		];
 	}
 
-	public function provideDocRootAppUrlParts() {
+	public static function provideDocRootAppUrlParts() {
 		return [
-			['files', 'ajax/list.php', [], '/index.php/apps/files/ajax/list.php'],
-			['files', 'ajax/list.php', ['trut' => 'trat', 'dut' => 'dat'], '/index.php/apps/files/ajax/list.php?trut=trat&dut=dat'],
+			['files_external', 'ajax/oauth2.php', [], '/index.php/apps/files_external/ajax/oauth2.php'],
+			['files_external', 'ajax/oauth2.php', ['trut' => 'trat', 'dut' => 'dat'], '/index.php/apps/files_external/ajax/oauth2.php?trut=trat&dut=dat'],
 			['', 'index.php', ['trut' => 'trat', 'dut' => 'dat'], '/index.php?trut=trat&dut=dat'],
 		];
 	}
 
-	public function provideSubDirAppUrlParts() {
+	public static function provideSubDirAppUrlParts() {
 		return [
-			['files', 'ajax/list.php', [], '/nextcloud/index.php/apps/files/ajax/list.php'],
-			['files', 'ajax/list.php', ['trut' => 'trat', 'dut' => 'dat'], '/nextcloud/index.php/apps/files/ajax/list.php?trut=trat&dut=dat'],
+			['files_external', 'ajax/oauth2.php', [], '/nextcloud/index.php/apps/files_external/ajax/oauth2.php'],
+			['files_external', 'ajax/oauth2.php', ['trut' => 'trat', 'dut' => 'dat'], '/nextcloud/index.php/apps/files_external/ajax/oauth2.php?trut=trat&dut=dat'],
 			['', 'index.php', ['trut' => 'trat', 'dut' => 'dat'], '/nextcloud/index.php?trut=trat&dut=dat'],
 		];
 	}
@@ -138,7 +135,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 	 * test absolute URL construction
 	 * @dataProvider provideDocRootURLs
 	 */
-	public function testGetAbsoluteURLDocRoot($url, $expectedResult) {
+	public function testGetAbsoluteURLDocRoot($url, $expectedResult): void {
 		$this->mockBaseUrl();
 		\OC::$WEBROOT = '';
 		$result = $this->urlGenerator->getAbsoluteURL($url);
@@ -150,7 +147,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 	 * test absolute URL construction
 	 * @dataProvider provideSubDirURLs
 	 */
-	public function testGetAbsoluteURLSubDir($url, $expectedResult) {
+	public function testGetAbsoluteURLSubDir($url, $expectedResult): void {
 		$this->mockBaseUrl();
 		\OC::$WEBROOT = '/nextcloud';
 		$result = $this->urlGenerator->getAbsoluteURL($url);
@@ -177,7 +174,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 		];
 	}
 
-	public function testGetBaseUrl() {
+	public function testGetBaseUrl(): void {
 		$this->mockBaseUrl();
 		\OC::$WEBROOT = '/nextcloud';
 		$actual = $this->urlGenerator->getBaseUrl();
@@ -185,7 +182,7 @@ class UrlGeneratorTest extends \Test\TestCase {
 		$this->assertEquals($expected, $actual);
 	}
 
-	public function testGetWebroot() {
+	public function testGetWebroot(): void {
 		\OC::$WEBROOT = '/nextcloud';
 		$actual = $this->urlGenerator->getWebroot();
 		$this->assertEquals(\OC::$WEBROOT, $actual);
@@ -194,138 +191,87 @@ class UrlGeneratorTest extends \Test\TestCase {
 	/**
 	 * @dataProvider provideOCSRoutes
 	 */
-	public function testLinkToOCSRouteAbsolute(string $route, string $expected) {
+	public function testLinkToOCSRouteAbsolute(string $route, bool $ignoreFrontController, string $expected): void {
 		$this->mockBaseUrl();
 		\OC::$WEBROOT = '/nextcloud';
 		$this->router->expects($this->once())
 			->method('generate')
-			->willReturnCallback(function ($routeName, $parameters) {
+			->willReturnCallback(function (string $routeName, array $parameters) use ($ignoreFrontController) {
 				if ($routeName === 'ocs.core.OCS.getCapabilities') {
-					return '/index.php/ocsapp/cloud/capabilities';
+					if (!$ignoreFrontController) {
+						return '/nextcloud/index.php/ocsapp/cloud/capabilities';
+					}
+					return '/nextcloud/ocsapp/cloud/capabilities';
 				} elseif ($routeName === 'ocs.core.WhatsNew.dismiss') {
-					return '/index.php/ocsapp/core/whatsnew';
+					if (!$ignoreFrontController) {
+						return '/nextcloud/index.php/ocsapp/core/whatsnew';
+					}
+					return '/nextcloud/ocsapp/core/whatsnew';
 				}
 			});
 		$result = $this->urlGenerator->linkToOCSRouteAbsolute($route);
 		$this->assertEquals($expected, $result);
 	}
 
-	public function provideOCSRoutes() {
+	public function provideOCSRoutes(): array {
 		return [
-			['core.OCS.getCapabilities', 'http://localhost/nextcloud/ocs/v2.php/cloud/capabilities'],
-			['core.WhatsNew.dismiss', 'http://localhost/nextcloud/ocs/v2.php/core/whatsnew'],
+			['core.OCS.getCapabilities', false, 'http://localhost/nextcloud/ocs/v2.php/cloud/capabilities'],
+			['core.OCS.getCapabilities', true, 'http://localhost/nextcloud/ocs/v2.php/cloud/capabilities'],
+			['core.WhatsNew.dismiss', false, 'http://localhost/nextcloud/ocs/v2.php/core/whatsnew'],
+			['core.WhatsNew.dismiss', true, 'http://localhost/nextcloud/ocs/v2.php/core/whatsnew'],
 		];
 	}
 
-	private function mockLinkToDefaultPageUrl(string $defaultAppConfig = '', bool $ignoreFrontControllerConfig = false) {
-		$this->config->expects($this->exactly(2))
-			->method('getSystemValue')
-			->withConsecutive(
-				['defaultapp', $this->anything()],
-				['htaccess.IgnoreFrontController', $this->anything()],
-			)
-			->will($this->onConsecutiveCalls(
-				$defaultAppConfig,
-				$ignoreFrontControllerConfig
-			));
+	private function mockLinkToDefaultPageUrl(bool $ignoreFrontControllerConfig = false) {
 		$this->config->expects($this->once())
 			->method('getAppValue')
 			->with('core', 'defaultpage')
 			->willReturn('');
+
+		$this->config->expects($this->once())
+			->method('getSystemValueBool')
+			->with('htaccess.IgnoreFrontController', $this->anything())
+			->willReturn($ignoreFrontControllerConfig);
 	}
 
-	public function testLinkToDefaultPageUrlWithRedirectUrlWithoutFrontController() {
+	public function testLinkToDefaultPageUrlWithRedirectUrlWithoutFrontController(): void {
 		$this->mockBaseUrl();
 
 		$_REQUEST['redirect_url'] = 'myRedirectUrl.com';
 		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/myRedirectUrl.com', $this->urlGenerator->linkToDefaultPageUrl());
 	}
 
-	public function testLinkToDefaultPageUrlWithRedirectUrlRedirectBypassWithoutFrontController() {
+	public function testLinkToDefaultPageUrlWithRedirectUrlRedirectBypassWithoutFrontController(): void {
 		$this->mockBaseUrl();
 		$this->mockLinkToDefaultPageUrl();
 		putenv('front_controller_active=false');
 
 		$_REQUEST['redirect_url'] = 'myRedirectUrl.com@foo.com:a';
-		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/index.php/apps/files/', $this->urlGenerator->linkToDefaultPageUrl());
+		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/index.php/apps/dashboard/', $this->urlGenerator->linkToDefaultPageUrl());
 	}
 
-	public function testLinkToDefaultPageUrlWithRedirectUrlRedirectBypassWithFrontController() {
+	public function testLinkToDefaultPageUrlWithRedirectUrlRedirectBypassWithFrontController(): void {
 		$this->mockBaseUrl();
 		$this->mockLinkToDefaultPageUrl();
 		putenv('front_controller_active=true');
 
 		$_REQUEST['redirect_url'] = 'myRedirectUrl.com@foo.com:a';
-		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/apps/files/', $this->urlGenerator->linkToDefaultPageUrl());
+		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/apps/dashboard/', $this->urlGenerator->linkToDefaultPageUrl());
 	}
 
-	public function testLinkToDefaultPageUrlWithRedirectUrlWithIgnoreFrontController() {
+	public function testLinkToDefaultPageUrlWithRedirectUrlWithIgnoreFrontController(): void {
 		$this->mockBaseUrl();
-		$this->mockLinkToDefaultPageUrl('', true);
+		$this->mockLinkToDefaultPageUrl(true);
 		putenv('front_controller_active=false');
 
 		$_REQUEST['redirect_url'] = 'myRedirectUrl.com@foo.com:a';
-		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/apps/files/', $this->urlGenerator->linkToDefaultPageUrl());
-	}
-
-	/**
-	 * @dataProvider provideDefaultApps
-	 */
-	public function testLinkToDefaultPageUrlWithDefaultApps($defaultAppConfig, $expectedPath) {
-		$userId = $this->getUniqueID();
-
-		/** @var \PHPUnit\Framework\MockObject\MockObject|IUser $userMock */
-		$userMock = $this->createMock(IUser::class);
-		$userMock->expects($this->once())
-			->method('getUID')
-			->willReturn($userId);
-
-		$this->mockBaseUrl();
-		$this->mockLinkToDefaultPageUrl($defaultAppConfig);
-
-		$this->config->expects($this->once())
-			->method('getUserValue')
-			->with($userId, 'core', 'defaultapp')
-			->willReturn('');
-		$this->userSession->expects($this->once())
-			->method('isLoggedIn')
-			->willReturn(true);
-		$this->userSession->expects($this->once())
-			->method('getUser')
-			->willReturn($userMock);
-
-		$this->assertEquals('http://localhost' . \OC::$WEBROOT . $expectedPath, $this->urlGenerator->linkToDefaultPageUrl());
-	}
-
-	public function provideDefaultApps(): array {
-		return [
-			// none specified, default to files
-			[
-				'',
-				'/index.php/apps/files/',
-			],
-			// unexisting or inaccessible app specified, default to files
-			[
-				'unexist',
-				'/index.php/apps/files/',
-			],
-			// non-standard app
-			[
-				'settings',
-				'/index.php/apps/settings/',
-			],
-			// non-standard app with fallback
-			[
-				'unexist,settings',
-				'/index.php/apps/settings/',
-			],
-		];
+		$this->assertSame('http://localhost' . \OC::$WEBROOT . '/apps/dashboard/', $this->urlGenerator->linkToDefaultPageUrl());
 	}
 
 	public function imagePathProvider(): array {
 		return [
 			['core', 'favicon-mask.svg', \OC::$WEBROOT . '/core/img/favicon-mask.svg'],
-			['files', 'external.svg', \OC::$WEBROOT . '/apps/files/img/external.svg'],
+			['files', 'folder.svg', \OC::$WEBROOT . '/apps/files/img/folder.svg'],
 		];
 	}
 

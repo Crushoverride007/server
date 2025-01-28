@@ -1,21 +1,26 @@
 <?php
 /**
- * Copyright (c) 2014 Lukas Reschke <lukas@owncloud.com>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2018-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\Mail;
 
 use OC\Mail\Message;
+use OCP\Mail\Headers\AutoSubmitted;
 use OCP\Mail\IEMailTemplate;
-use Swift_Message;
+use PHPUnit\Framework\MockObject\MockObject;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
+use Symfony\Component\Mime\Exception\RfcComplianceException;
+use Symfony\Component\Mime\Header\HeaderInterface;
+use Symfony\Component\Mime\Header\Headers;
 use Test\TestCase;
 
 class MessageTest extends TestCase {
-	/** @var Swift_Message */
-	private $swiftMessage;
+	/** @var Email */
+	private $symfonyEmail;
 	/** @var Message */
 	private $message;
 
@@ -24,10 +29,26 @@ class MessageTest extends TestCase {
 	 */
 	public function mailAddressProvider() {
 		return [
-			[['lukas@owncloud.com' => 'Lukas Reschke'], ['lukas@owncloud.com' => 'Lukas Reschke']],
-			[['lukas@owncloud.com' => 'Lukas Reschke', 'lukas@öwnclöüd.com', 'lukäs@owncloud.örg' => 'Lükäs Réschke'],
-				['lukas@owncloud.com' => 'Lukas Reschke', 'lukas@xn--wncld-iuae2c.com', 'lukäs@owncloud.xn--rg-eka' => 'Lükäs Réschke']],
-			[['lukas@öwnclöüd.com'], ['lukas@xn--wncld-iuae2c.com']],
+			[
+				['lukas@owncloud.com' => 'Lukas Reschke'],
+				[new Address('lukas@owncloud.com', 'Lukas Reschke')]
+			],
+			[
+				[
+					'lukas@owncloud.com' => 'Lukas Reschke',
+					'lukas@öwnclöüd.com',
+					'lukäs@owncloud.örg' => 'Lükäs Réschke'
+				],
+				[
+					new Address('lukas@owncloud.com', 'Lukas Reschke'),
+					new Address('lukas@öwnclöüd.com'),
+					new Address('lukäs@owncloud.örg', 'Lükäs Réschke')
+				]
+			],
+			[
+				['lukas@öwnclöüd.com'],
+				[new Address('lukas@öwnclöüd.com')]
+			],
 		];
 	}
 
@@ -36,7 +57,7 @@ class MessageTest extends TestCase {
 	 */
 	public function getMailAddressProvider() {
 		return [
-			[null, []],
+			[[], []],
 			[['lukas@owncloud.com' => 'Lukas Reschke'], ['lukas@owncloud.com' => 'Lukas Reschke']],
 		];
 	}
@@ -44,178 +65,158 @@ class MessageTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 
-		$this->swiftMessage = $this->getMockBuilder('\Swift_Message')
+		$this->symfonyEmail = $this->getMockBuilder(Email::class)
 			->disableOriginalConstructor()->getMock();
 
-		$this->message = new Message($this->swiftMessage, false);
+		$this->message = new Message($this->symfonyEmail, false);
 	}
 
 	/**
-	 * @requires function idn_to_ascii
 	 * @dataProvider mailAddressProvider
 	 *
 	 * @param string $unconverted
 	 * @param string $expected
 	 */
-	public function testConvertAddresses($unconverted, $expected) {
-		$this->assertSame($expected, self::invokePrivate($this->message, 'convertAddresses', [$unconverted]));
+	public function testConvertAddresses($unconverted, $expected): void {
+		$this->assertEquals($expected, self::invokePrivate($this->message, 'convertAddresses', [$unconverted]));
 	}
 
-	public function testSetFrom() {
-		$this->swiftMessage
+	public function testSetRecipients(): void {
+		$this->message = $this->message->setFrom(['pierres-general-store@stardewvalley.com' => 'Pierres General Store']);
+		$this->message = $this->message->setTo(['lewis-tent@stardewvalley.com' => "Lewis' Tent Life"]);
+		$this->message = $this->message->setReplyTo(['penny@stardewvalley-library.co.edu' => 'Penny']);
+		$this->message = $this->message->setCc(['gunther@stardewvalley-library.co.edu' => 'Gunther']);
+		$this->message = $this->message->setBcc(['pam@stardewvalley-bus.com' => 'Pam']);
+
+		$this->symfonyEmail
 			->expects($this->once())
-			->method('setFrom')
-			->with(['lukas@owncloud.com']);
-		$this->message->setFrom(['lukas@owncloud.com']);
+			->method('from')
+			->with(new Address('pierres-general-store@stardewvalley.com', 'Pierres General Store'));
+		$this->symfonyEmail
+			->expects($this->once())
+			->method('to')
+			->with(new Address('lewis-tent@stardewvalley.com', "Lewis' Tent Life"));
+		$this->symfonyEmail
+			->expects($this->once())
+			->method('replyTo')
+			->with(new Address('penny@stardewvalley-library.co.edu', 'Penny'));
+		$this->symfonyEmail
+			->expects($this->once())
+			->method('cc')
+			->with(new Address('gunther@stardewvalley-library.co.edu', 'Gunther'));
+		$this->symfonyEmail
+			->expects($this->once())
+			->method('bcc')
+			->with(new Address('pam@stardewvalley-bus.com', 'Pam'));
+
+		$this->message->setRecipients();
 	}
 
+	public function testSetTo(): void {
+		$expected = ['pierres-general-store@stardewvalley.com' => 'Pierres General Store'];
 
-	/**
-	 * @dataProvider getMailAddressProvider
-	 *
-	 * @param $swiftresult
-	 * @param $return
-	 */
-	public function testGetFrom($swiftresult, $return) {
-		$this->swiftMessage
+		$message = $this->message->setTo(['pierres-general-store@stardewvalley.com' => 'Pierres General Store']);
+
+		$this->assertEquals($expected, $message->getTo());
+	}
+	public function testSetRecipientsException(): void {
+		$message = $this->message->setTo(['lewis-tent@~~~~.com' => "Lewis' Tent Life"]);
+
+		$this->symfonyEmail
 			->expects($this->once())
-			->method('getFrom')
-			->willReturn($swiftresult);
+			->method('to')
+			->willThrowException(new RfcComplianceException());
 
-		$this->assertSame($return, $this->message->getFrom());
+		$this->expectException(RfcComplianceException::class);
+		$message->setRecipients();
 	}
 
-	public function testSetReplyTo() {
-		$this->swiftMessage
+	public function testSetRecipientsEmptyValues(): void {
+		$message = $this->message->setTo([]);
+
+		$this->symfonyEmail
 			->expects($this->once())
-			->method('setReplyTo')
-			->with(['lukas@owncloud.com']);
-		$this->message->setReplyTo(['lukas@owncloud.com']);
+			->method('to');
+
+		$message->setRecipients();
 	}
 
-	public function testGetReplyTo() {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('getReplyTo')
-			->willReturn('lukas@owncloud.com');
+	public function testSetGetFrom(): void {
+		$expected = ['pierres-general-store@stardewvalley.com' => 'Pierres General Store'];
 
-		$this->assertSame('lukas@owncloud.com', $this->message->getReplyTo());
+		$message = $this->message->setFrom(['pierres-general-store@stardewvalley.com' => 'Pierres General Store']);
+
+		$this->assertEquals($expected, $message->getFrom());
 	}
 
-	public function testSetTo() {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('setTo')
-			->with(['lukas@owncloud.com']);
-		$this->message->setTo(['lukas@owncloud.com']);
+	public function testSetGetTo(): void {
+		$expected = ['lewis-tent@stardewvalley.com' => "Lewis' Tent Life"];
+
+		$message = $this->message->setTo(['lewis-tent@stardewvalley.com' => "Lewis' Tent Life"]);
+
+		$this->assertEquals($expected, $message->getTo());
 	}
 
-	/**
-	 * @dataProvider  getMailAddressProvider
-	 */
-	public function testGetTo($swiftresult, $return) {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('getTo')
-			->willReturn($swiftresult);
+	public function testSetGetReplyTo(): void {
+		$expected = ['penny@stardewvalley-library.co.edu' => 'Penny'];
 
-		$this->assertSame($return, $this->message->getTo());
+		$message = $this->message->setReplyTo(['penny@stardewvalley-library.co.edu' => 'Penny']);
+
+		$this->assertEquals($expected, $message->getReplyTo());
 	}
 
-	public function testSetCc() {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('setCc')
-			->with(['lukas@owncloud.com']);
-		$this->message->setCc(['lukas@owncloud.com']);
+	public function testSetGetCC(): void {
+		$expected = ['gunther@stardewvalley-library.co.edu' => 'Gunther'];
+
+		$message = $this->message->setCc(['gunther@stardewvalley-library.co.edu' => 'Gunther']);
+
+		$this->assertEquals($expected, $message->getCc());
 	}
 
-	/**
-	 * @dataProvider  getMailAddressProvider
-	 */
-	public function testGetCc($swiftresult, $return) {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('getCc')
-			->willReturn($swiftresult);
+	public function testSetGetBCC(): void {
+		$expected = ['pam@stardewvalley-bus.com' => 'Pam'];
 
-		$this->assertSame($return, $this->message->getCc());
+		$message = $this->message->setBcc(['pam@stardewvalley-bus.com' => 'Pam']);
+
+		$this->assertEquals($expected, $message->getBcc());
 	}
 
-	public function testSetBcc() {
-		$this->swiftMessage
+	public function testSetPlainBody(): void {
+		$this->symfonyEmail
 			->expects($this->once())
-			->method('setBcc')
-			->with(['lukas@owncloud.com']);
-		$this->message->setBcc(['lukas@owncloud.com']);
-	}
-
-	/**
-	 * @dataProvider  getMailAddressProvider
-	 */
-	public function testGetBcc($swiftresult, $return) {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('getBcc')
-			->willReturn($swiftresult);
-
-		$this->assertSame($return, $this->message->getBcc());
-	}
-
-	public function testSetSubject() {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('setSubject')
-			->with('Fancy Subject');
-
-		$this->message->setSubject('Fancy Subject');
-	}
-
-	public function testGetSubject() {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('getSubject')
-			->willReturn('Fancy Subject');
-
-		$this->assertSame('Fancy Subject', $this->message->getSubject());
-	}
-
-	public function testSetPlainBody() {
-		$this->swiftMessage
-			->expects($this->once())
-			->method('setBody')
+			->method('text')
 			->with('Fancy Body');
 
 		$this->message->setPlainBody('Fancy Body');
 	}
 
-	public function testGetPlainBody() {
-		$this->swiftMessage
+	public function testGetPlainBody(): void {
+		$this->symfonyEmail
 			->expects($this->once())
-			->method('getBody')
+			->method('getTextBody')
 			->willReturn('Fancy Body');
 
 		$this->assertSame('Fancy Body', $this->message->getPlainBody());
 	}
 
-	public function testSetHtmlBody() {
-		$this->swiftMessage
+	public function testSetHtmlBody(): void {
+		$this->symfonyEmail
 			->expects($this->once())
-			->method('addPart')
-			->with('<blink>Fancy Body</blink>', 'text/html');
+			->method('html')
+			->with('<blink>Fancy Body</blink>', 'utf-8');
 
 		$this->message->setHtmlBody('<blink>Fancy Body</blink>');
 	}
 
-	public function testPlainTextRenderOption() {
-		/** @var \PHPUnit\Framework\MockObject\MockObject|Swift_Message $swiftMessage */
-		$swiftMessage = $this->getMockBuilder('\Swift_Message')
+	public function testPlainTextRenderOption(): void {
+		/** @var MockObject|Email $symfonyEmail */
+		$symfonyEmail = $this->getMockBuilder(Email::class)
 			->disableOriginalConstructor()->getMock();
-		/** @var \PHPUnit\Framework\MockObject\MockObject|IEMailTemplate $template */
-		$template = $this->getMockBuilder('\OCP\Mail\IEMailTemplate')
+		/** @var MockObject|IEMailTemplate $template */
+		$template = $this->getMockBuilder(IEMailTemplate::class)
 			->disableOriginalConstructor()->getMock();
 
-		$message = new Message($swiftMessage, true);
+		$message = new Message($symfonyEmail, true);
 
 		$template
 			->expects($this->never())
@@ -230,15 +231,15 @@ class MessageTest extends TestCase {
 		$message->useTemplate($template);
 	}
 
-	public function testBothRenderingOptions() {
-		/** @var \PHPUnit\Framework\MockObject\MockObject|Swift_Message $swiftMessage */
-		$swiftMessage = $this->getMockBuilder('\Swift_Message')
+	public function testBothRenderingOptions(): void {
+		/** @var MockObject|Email $symfonyEmail */
+		$symfonyEmail = $this->getMockBuilder(Email::class)
 			->disableOriginalConstructor()->getMock();
-		/** @var \PHPUnit\Framework\MockObject\MockObject|IEMailTemplate $template */
-		$template = $this->getMockBuilder('\OCP\Mail\IEMailTemplate')
+		/** @var MockObject|IEMailTemplate $template */
+		$template = $this->getMockBuilder(IEMailTemplate::class)
 			->disableOriginalConstructor()->getMock();
 
-		$message = new Message($swiftMessage, false);
+		$message = new Message($symfonyEmail, false);
 
 		$template
 			->expects($this->once())
@@ -251,5 +252,43 @@ class MessageTest extends TestCase {
 			->method('renderSubject');
 
 		$message->useTemplate($template);
+	}
+
+	public function testSetAutoSubmitted1(): void {
+		$headers = new Headers($this->createMock(HeaderInterface::class));
+		$headers->addTextHeader(AutoSubmitted::HEADER, 'yes');
+		$symfonyEmail = $this->createMock(Email::class);
+
+		$symfonyEmail->method('getHeaders')
+			->willReturn($headers);
+
+		$message = new Message($symfonyEmail, false);
+		$message->setAutoSubmitted(AutoSubmitted::VALUE_AUTO_GENERATED);
+		$this->assertNotSame('no', $message->getAutoSubmitted());
+	}
+
+	public function testSetAutoSubmitted2(): void {
+		$headers = new Headers($this->createMock(HeaderInterface::class));
+		$headers->addTextHeader(AutoSubmitted::HEADER, 'no');
+		$symfonyEmail = $this->createMock(Email::class);
+
+		$symfonyEmail->method('getHeaders')
+			->willReturn($headers);
+
+		$message = new Message($symfonyEmail, false);
+		$message->setAutoSubmitted(AutoSubmitted::VALUE_AUTO_GENERATED);
+		$this->assertSame('auto-generated', $message->getAutoSubmitted());
+	}
+
+	public function testGetAutoSubmitted(): void {
+		$headers = new Headers($this->createMock(HeaderInterface::class));
+		$headers->addTextHeader(AutoSubmitted::HEADER, 'no');
+		$symfonyEmail = $this->createMock(Email::class);
+
+		$symfonyEmail->method('getHeaders')
+			->willReturn($headers);
+
+		$message = new Message($symfonyEmail, false);
+		$this->assertSame('no', $message->getAutoSubmitted());
 	}
 }

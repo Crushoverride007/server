@@ -1,33 +1,7 @@
 /**
- * Copyright (c) 2015
- *
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Michael Jobst <mjobst+github@tecratech.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- * @author Tomasz Grobelny <tomasz@grobelny.net>
- * @author Vincent Petry <vincent@nextcloud.com>
- * @author Vinicius Cubas Brand <vinicius@eita.org.br>
- *
- * @license AGPL-3.0-or-later
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 /* eslint-disable */
@@ -758,7 +732,7 @@ import escapeHTML from 'escape-html'
 			return promise
 		},
 
-		_simpleCall: function(method, path) {
+		_simpleCall: function(method, path, headers) {
 			if (!path) {
 				throw 'Missing argument "path"'
 			}
@@ -769,7 +743,8 @@ import escapeHTML from 'escape-html'
 
 			this._client.request(
 				method,
-				this._buildUrl(path)
+				this._buildUrl(path),
+				headers ? headers : {}
 			).then(
 				function(result) {
 					if (self._isSuccessStatus(result.status)) {
@@ -790,8 +765,8 @@ import escapeHTML from 'escape-html'
 		 *
 		 * @returns {Promise}
 		 */
-		createDirectory: function(path) {
-			return this._simpleCall('MKCOL', path)
+		createDirectory: function(path, headers) {
+			return this._simpleCall('MKCOL', path, headers)
 		},
 
 		/**

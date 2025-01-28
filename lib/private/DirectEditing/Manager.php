@@ -1,42 +1,23 @@
 <?php
 /**
- * @copyright Copyright (c) 2019 Julius Härtl <jus@bitgrid.net>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Tobias Kaminsky <tobias@kaminsky.me>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\DirectEditing;
 
 use Doctrine\DBAL\FetchMode;
-use OC\Files\Node\Folder;
 use OCP\AppFramework\Http\NotFoundResponse;
 use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\Constants;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\DirectEditing\ACreateFromTemplate;
 use OCP\DirectEditing\IEditor;
-use \OCP\DirectEditing\IManager;
+use OCP\DirectEditing\IManager;
 use OCP\DirectEditing\IToken;
 use OCP\Encryption\IManager as EncryptionManager;
 use OCP\Files\File;
+use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Files\Node;
 use OCP\Files\NotFoundException;
@@ -57,33 +38,21 @@ class Manager implements IManager {
 
 	/** @var IEditor[] */
 	private $editors = [];
-	/** @var IDBConnection */
-	private $connection;
-	/** @var ISecureRandom */
-	private $random;
 	/** @var string|null */
 	private $userId;
-	/** @var IRootFolder */
-	private $rootFolder;
 	/** @var IL10N */
 	private $l10n;
-	/** @var EncryptionManager */
-	private $encryptionManager;
 
 	public function __construct(
-		ISecureRandom $random,
-		IDBConnection $connection,
-		IUserSession $userSession,
-		IRootFolder $rootFolder,
-		IFactory $l10nFactory,
-		EncryptionManager $encryptionManager
+		private ISecureRandom $random,
+		private IDBConnection $connection,
+		private IUserSession $userSession,
+		private IRootFolder $rootFolder,
+		private IFactory $l10nFactory,
+		private EncryptionManager $encryptionManager,
 	) {
-		$this->random = $random;
-		$this->connection = $connection;
 		$this->userId = $userSession->getUser() ? $userSession->getUser()->getUID() : null;
-		$this->rootFolder = $rootFolder;
 		$this->l10n = $l10nFactory->get('lib');
-		$this->encryptionManager = $encryptionManager;
 	}
 
 	public function registerDirectEditor(IEditor $directEditor): void {
@@ -149,9 +118,25 @@ class Manager implements IManager {
 		throw new \RuntimeException('No creator found');
 	}
 
-	public function open(string $filePath, string $editorId = null): string {
-		/** @var File $file */
-		$file = $this->rootFolder->getUserFolder($this->userId)->get($filePath);
+	public function open(string $filePath, ?string $editorId = null, ?int $fileId = null): string {
+		$userFolder = $this->rootFolder->getUserFolder($this->userId);
+		$file = $userFolder->get($filePath);
+		if ($fileId !== null && $file instanceof Folder) {
+			$files = $file->getById($fileId);
+
+			// Workaround to always open files with edit permissions if multiple occurences of
+			// the same file id are in the user home, ideally we should also track the path of the file when opening
+			usort($files, function (Node $a, Node $b) {
+				return ($b->getPermissions() & Constants::PERMISSION_UPDATE) <=> ($a->getPermissions() & Constants::PERMISSION_UPDATE);
+			});
+			$file = array_shift($files);
+		}
+
+		if (!$file instanceof File) {
+			throw new NotFoundException();
+		}
+
+		$filePath = $userFolder->getRelativePath($file->getPath());
 
 		if ($editorId === null) {
 			$editorId = $this->findEditorForFile($file);
@@ -185,7 +170,13 @@ class Manager implements IManager {
 			$this->invalidateToken($token);
 			return new NotFoundResponse();
 		}
-		return $editor->open($tokenObject);
+
+		try {
+			$this->invokeTokenScope($tokenObject->getUser());
+			return $editor->open($tokenObject);
+		} finally {
+			$this->revertTokenScope();
+		}
 	}
 
 	public function editSecure(File $file, string $editorId): TemplateResponse {
@@ -203,7 +194,7 @@ class Manager implements IManager {
 		$query = $this->connection->getQueryBuilder();
 		$query->select('*')->from(self::TABLE_TOKENS)
 			->where($query->expr()->eq('token', $query->createNamedParameter($token, IQueryBuilder::PARAM_STR)));
-		$result = $query->execute();
+		$result = $query->executeQuery();
 		if ($tokenRow = $result->fetch(FetchMode::ASSOCIATIVE)) {
 			return new Token($this, $tokenRow);
 		}
@@ -214,7 +205,7 @@ class Manager implements IManager {
 		$query = $this->connection->getQueryBuilder();
 		$query->delete(self::TABLE_TOKENS)
 			->where($query->expr()->lt('timestamp', $query->createNamedParameter(time() - self::TOKEN_CLEANUP_TIME)));
-		return $query->execute();
+		return $query->executeStatement();
 	}
 
 	public function refreshToken(string $token): bool {
@@ -222,7 +213,7 @@ class Manager implements IManager {
 		$query->update(self::TABLE_TOKENS)
 			->set('timestamp', $query->createNamedParameter(time(), IQueryBuilder::PARAM_INT))
 			->where($query->expr()->eq('token', $query->createNamedParameter($token, IQueryBuilder::PARAM_STR)));
-		$result = $query->execute();
+		$result = $query->executeStatement();
 		return $result !== 0;
 	}
 
@@ -231,7 +222,7 @@ class Manager implements IManager {
 		$query = $this->connection->getQueryBuilder();
 		$query->delete(self::TABLE_TOKENS)
 			->where($query->expr()->eq('token', $query->createNamedParameter($token, IQueryBuilder::PARAM_STR)));
-		$result = $query->execute();
+		$result = $query->executeStatement();
 		return $result !== 0;
 	}
 
@@ -241,16 +232,19 @@ class Manager implements IManager {
 			->set('accessed', $query->createNamedParameter(true, IQueryBuilder::PARAM_BOOL))
 			->set('timestamp', $query->createNamedParameter(time(), IQueryBuilder::PARAM_INT))
 			->where($query->expr()->eq('token', $query->createNamedParameter($token, IQueryBuilder::PARAM_STR)));
-		$result = $query->execute();
+		$result = $query->executeStatement();
 		return $result !== 0;
 	}
 
 	public function invokeTokenScope($userId): void {
-		\OC_User::setIncognitoMode(true);
 		\OC_User::setUserId($userId);
 	}
 
-	public function createToken($editorId, File $file, string $filePath, IShare $share = null): string {
+	public function revertTokenScope(): void {
+		$this->userSession->setUser(null);
+	}
+
+	public function createToken($editorId, File $file, string $filePath, ?IShare $share = null): string {
 		$token = $this->random->generate(64, ISecureRandom::CHAR_HUMAN_READABLE);
 		$query = $this->connection->getQueryBuilder();
 		$query->insert(self::TABLE_TOKENS)
@@ -263,15 +257,14 @@ class Manager implements IManager {
 				'share_id' => $query->createNamedParameter($share !== null ? $share->getId(): null),
 				'timestamp' => $query->createNamedParameter(time())
 			]);
-		$query->execute();
+		$query->executeStatement();
 		return $token;
 	}
 
 	/**
-	 * @param $userId
-	 * @param $fileId
-	 * @param null $filePath
-	 * @return Node
+	 * @param string $userId
+	 * @param int $fileId
+	 * @param ?string $filePath
 	 * @throws NotFoundException
 	 */
 	public function getFileForToken($userId, $fileId, $filePath = null): Node {
@@ -279,11 +272,11 @@ class Manager implements IManager {
 		if ($filePath !== null) {
 			return $userFolder->get($filePath);
 		}
-		$files = $userFolder->getById($fileId);
-		if (count($files) === 0) {
+		$file = $userFolder->getFirstNodeById($fileId);
+		if (!$file) {
 			throw new NotFoundException('File nound found by id ' . $fileId);
 		}
-		return $files[0];
+		return $file;
 	}
 
 	public function isEnabled(): bool {
@@ -295,7 +288,7 @@ class Manager implements IManager {
 			$moduleId = $this->encryptionManager->getDefaultEncryptionModuleId();
 			$module = $this->encryptionManager->getEncryptionModule($moduleId);
 			/** @var \OCA\Encryption\Util $util */
-			$util = \OC::$server->get(\OCA\Encryption\Util::class);
+			$util = \OCP\Server::get(\OCA\Encryption\Util::class);
 			if ($module->isReadyForUser($this->userId) && $util->isMasterKeyEnabled()) {
 				return true;
 			}

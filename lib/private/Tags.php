@@ -1,32 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bernhard Reiter <ockham@raz.or.at>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Tanghus <thomas@tanghus.net>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC;
 
@@ -34,9 +11,12 @@ use OC\Tagging\Tag;
 use OC\Tagging\TagMapper;
 use OCP\DB\Exception;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\EventDispatcher\IEventDispatcher;
+use OCP\Files\Events\NodeAddedToFavorite;
+use OCP\Files\Events\NodeRemovedFromFavorite;
 use OCP\IDBConnection;
-use OCP\ILogger;
 use OCP\ITags;
+use OCP\IUserSession;
 use OCP\Share_Backend;
 use Psr\Log\LoggerInterface;
 
@@ -45,10 +25,6 @@ class Tags implements ITags {
 	 * Used for storing objectid/categoryname pairs while rescanning.
 	 */
 	private static array $relations = [];
-	private string $type;
-	private string $user;
-	private IDBConnection $db;
-	private LoggerInterface $logger;
 	private array $tags = [];
 
 	/**
@@ -61,11 +37,6 @@ class Tags implements ITags {
 	 * user, if $this->includeShared === true.
 	 */
 	private array $owners = [];
-
-	/**
-	 * The Mapper we are using to communicate our Tag objects to the database.
-	 */
-	private TagMapper $mapper;
 
 	/**
 	 * The sharing backend for objects of $this->type. Required if
@@ -86,14 +57,18 @@ class Tags implements ITags {
 	 *
 	 * since 20.0.0 $includeShared isn't used anymore
 	 */
-	public function __construct(TagMapper $mapper, string $user, string $type, LoggerInterface $logger, IDBConnection $connection, array $defaultTags = []) {
-		$this->mapper = $mapper;
-		$this->user = $user;
-		$this->type = $type;
+	public function __construct(
+		private TagMapper $mapper,
+		private string $user,
+		private string $type,
+		private LoggerInterface $logger,
+		private IDBConnection $db,
+		private IEventDispatcher $dispatcher,
+		private IUserSession $userSession,
+		array $defaultTags = [],
+	) {
 		$this->owners = [$this->user];
 		$this->tags = $this->mapper->loadTags($this->owners, $this->type);
-		$this->db = $connection;
-		$this->logger = $logger;
 
 		if (count($defaultTags) > 0 && count($this->tags) === 0) {
 			$this->addMultiple($defaultTags, true);
@@ -171,9 +146,9 @@ class Tags implements ITags {
 	/**
 	 * Get the list of tags for the given ids.
 	 *
-	 * @param array $objIds array of object ids
-	 * @return array|false of tags id as key to array of tag names
-	 * or false if an error occurred
+	 * @param list<int> $objIds array of object ids
+	 * @return array<int, list<string>>|false of tags id as key to array of tag names
+	 *                                        or false if an error occurred
 	 */
 	public function getTagsForObjects(array $objIds) {
 		$entries = [];
@@ -235,7 +210,7 @@ class Tags implements ITags {
 		}
 
 		if ($tagId === false) {
-			$l10n = \OC::$server->getL10N('core');
+			$l10n = \OCP\Util::getL10N('core');
 			throw new \Exception(
 				$l10n->t('Could not find category "%s"', [$tag])
 			);
@@ -266,14 +241,13 @@ class Tags implements ITags {
 
 	/**
 	 * Checks whether a tag is saved for the given user,
-	 * disregarding the ones shared with him or her.
+	 * disregarding the ones shared with them.
 	 *
 	 * @param string $name The tag name to check for.
 	 * @param string $user The user whose tags are to be checked.
 	 */
 	public function userHasTag(string $name, string $user): bool {
-		$key = $this->array_searchi($name, $this->getTagsForUser($user));
-		return ($key !== false) ? $this->tags[$key]->getId() : false;
+		return $this->array_searchi($name, $this->getTagsForUser($user)) !== false;
 	}
 
 	/**
@@ -367,7 +341,7 @@ class Tags implements ITags {
 	 * Add a list of new tags.
 	 *
 	 * @param string|string[] $names A string with a name or an array of strings containing
-	 * the name(s) of the tag(s) to add.
+	 *                               the name(s) of the tag(s) to add.
 	 * @param bool $sync When true, save the tags
 	 * @param int|null $id int Optional object id to add to this|these tag(s)
 	 * @return bool Returns false on error.
@@ -486,11 +460,13 @@ class Tags implements ITags {
 		try {
 			return $this->getIdsForTag(ITags::TAG_FAVORITE);
 		} catch (\Exception $e) {
-			\OC::$server->getLogger()->logException($e, [
-				'message' => __METHOD__,
-				'level' => ILogger::ERROR,
-				'app' => 'core',
-			]);
+			\OCP\Server::get(LoggerInterface::class)->error(
+				$e->getMessage(),
+				[
+					'app' => 'core',
+					'exception' => $e,
+				]
+			);
 			return [];
 		}
 	}
@@ -525,11 +501,11 @@ class Tags implements ITags {
 	 * @param string $tag The id or name of the tag
 	 * @return boolean Returns false on error.
 	 */
-	public function tagAs($objid, $tag) {
+	public function tagAs($objid, $tag, string $path = '') {
 		if (is_string($tag) && !is_numeric($tag)) {
 			$tag = trim($tag);
 			if ($tag === '') {
-				\OCP\Util::writeLog('core', __METHOD__.', Cannot add an empty tag', ILogger::DEBUG);
+				$this->logger->debug(__METHOD__ . ', Cannot add an empty tag');
 				return false;
 			}
 			if (!$this->hasTag($tag)) {
@@ -549,11 +525,14 @@ class Tags implements ITags {
 		try {
 			$qb->executeStatement();
 		} catch (\Exception $e) {
-			\OC::$server->getLogger()->error($e->getMessage(), [
+			\OCP\Server::get(LoggerInterface::class)->error($e->getMessage(), [
 				'app' => 'core',
 				'exception' => $e,
 			]);
 			return false;
+		}
+		if ($tag === ITags::TAG_FAVORITE) {
+			$this->dispatcher->dispatchTyped(new NodeAddedToFavorite($this->userSession->getUser(), $objid, $path));
 		}
 		return true;
 	}
@@ -565,11 +544,11 @@ class Tags implements ITags {
 	 * @param string $tag The id or name of the tag
 	 * @return boolean
 	 */
-	public function unTag($objid, $tag) {
+	public function unTag($objid, $tag, string $path = '') {
 		if (is_string($tag) && !is_numeric($tag)) {
 			$tag = trim($tag);
 			if ($tag === '') {
-				\OCP\Util::writeLog('core', __METHOD__.', Tag name is empty', ILogger::DEBUG);
+				$this->logger->debug(__METHOD__ . ', Tag name is empty');
 				return false;
 			}
 			$tagId = $this->getTagId($tag);
@@ -592,6 +571,9 @@ class Tags implements ITags {
 			]);
 			return false;
 		}
+		if ($tag === ITags::TAG_FAVORITE) {
+			$this->dispatcher->dispatchTyped(new NodeRemovedFromFavorite($this->userSession->getUser(), $objid, $path));
+		}
 		return true;
 	}
 
@@ -609,8 +591,7 @@ class Tags implements ITags {
 		$names = array_map('trim', $names);
 		array_filter($names);
 
-		\OCP\Util::writeLog('core', __METHOD__ . ', before: '
-			. print_r($this->tags, true), ILogger::DEBUG);
+		$this->logger->debug(__METHOD__ . ', before: ' . print_r($this->tags, true));
 		foreach ($names as $name) {
 			$id = null;
 
@@ -625,8 +606,7 @@ class Tags implements ITags {
 				unset($this->tags[$key]);
 				$this->mapper->delete($tag);
 			} else {
-				\OCP\Util::writeLog('core', __METHOD__ . 'Cannot delete tag ' . $name
-					. ': not found.', ILogger::ERROR);
+				$this->logger->error(__METHOD__ . 'Cannot delete tag ' . $name . ': not found.');
 			}
 			if (!is_null($id) && $id !== false) {
 				try {

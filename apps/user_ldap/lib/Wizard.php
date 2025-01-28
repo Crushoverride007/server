@@ -1,56 +1,24 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Alexander Bergolth <leo@strike.wu.ac.at>
- * @author Allan Nordhøy <epost@anotheragency.no>
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Jean-Louis Dupond <jean-louis@dupond.be>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Nicolas Grekas <nicolas.grekas@gmail.com>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Stefan Weil <sw@weilnetz.de>
- * @author Tobias Perschon <tobias@perschon.at>
- * @author Victor Dubiniuk <dubiniuk@owncloud.com>
- * @author Xuanwo <xuanwo@yunify.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
+
 namespace OCA\User_LDAP;
 
 use OC\ServerNotAvailableException;
+use OCP\IL10N;
+use OCP\L10N\IFactory as IL10NFactory;
+use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 class Wizard extends LDAPUtility {
-	/** @var \OCP\IL10N */
-	protected static $l;
-	protected $access;
-	protected $cr;
-	protected $configuration;
-	protected $result;
-	protected $resultCache = [];
-
-	/** @var LoggerInterface */
-	protected $logger;
+	protected static ?IL10N $l = null;
+	protected ?\LDAP\Connection $cr = null;
+	protected WizardResult $result;
+	protected LoggerInterface $logger;
 
 	public const LRESULT_PROCESSED_OK = 2;
 	public const LRESULT_PROCESSED_INVALID = 3;
@@ -65,19 +33,15 @@ class Wizard extends LDAPUtility {
 
 	public const LDAP_NW_TIMEOUT = 4;
 
-	/**
-	 * Constructor
-	 * @param Configuration $configuration an instance of Configuration
-	 * @param ILDAPWrapper $ldap an instance of ILDAPWrapper
-	 * @param Access $access
-	 */
-	public function __construct(Configuration $configuration, ILDAPWrapper $ldap, Access $access) {
+	public function __construct(
+		protected Configuration $configuration,
+		ILDAPWrapper $ldap,
+		protected Access $access,
+	) {
 		parent::__construct($ldap);
-		$this->configuration = $configuration;
-		if (is_null(Wizard::$l)) {
-			Wizard::$l = \OC::$server->getL10N('user_ldap');
+		if (is_null(static::$l)) {
+			static::$l = \OC::$server->get(IL10NFactory::class)->get('user_ldap');
 		}
-		$this->access = $access;
 		$this->result = new WizardResult();
 		$this->logger = \OC::$server->get(LoggerInterface::class);
 	}
@@ -93,11 +57,13 @@ class Wizard extends LDAPUtility {
 	 *
 	 * @param string $filter the LDAP search filter
 	 * @param string $type a string being either 'users' or 'groups';
-	 * @return int
 	 * @throws \Exception
 	 */
 	public function countEntries(string $filter, string $type): int {
-		$reqs = ['ldapHost', 'ldapPort', 'ldapBase'];
+		$reqs = ['ldapHost', 'ldapBase'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
 		if ($type === 'users') {
 			$reqs[] = 'ldapUserFilter';
 		}
@@ -120,6 +86,9 @@ class Wizard extends LDAPUtility {
 		return (int)$result;
 	}
 
+	/**
+	 * @return WizardResult|false
+	 */
 	public function countGroups() {
 		$filter = $this->configuration->ldapGroupFilter;
 
@@ -153,10 +122,9 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return WizardResult
 	 * @throws \Exception
 	 */
-	public function countUsers() {
+	public function countUsers(): WizardResult {
 		$filter = $this->access->getFilterForUserCount();
 
 		$usersTotal = $this->countEntries($filter, 'users');
@@ -176,31 +144,25 @@ class Wizard extends LDAPUtility {
 	/**
 	 * counts any objects in the currently set base dn
 	 *
-	 * @return WizardResult
 	 * @throws \Exception
 	 */
-	public function countInBaseDN() {
+	public function countInBaseDN(): WizardResult {
 		// we don't need to provide a filter in this case
 		$total = $this->countEntries('', 'objects');
-		if ($total === false) {
-			throw new \Exception('invalid results received');
-		}
 		$this->result->addChange('ldap_test_base', $total);
 		return $this->result;
 	}
 
 	/**
 	 * counts users with a specified attribute
-	 * @param string $attr
-	 * @param bool $existsCheck
-	 * @return int|bool
+	 * @return int|false
 	 */
-	public function countUsersWithAttribute($attr, $existsCheck = false) {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapUserFilter',
-		])) {
+	public function countUsersWithAttribute(string $attr, bool $existsCheck = false) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 
@@ -209,7 +171,7 @@ class Wizard extends LDAPUtility {
 			$attr . '=*'
 		]);
 
-		$limit = ($existsCheck === false) ? null : 1;
+		$limit = $existsCheck ? null : 1;
 
 		return $this->access->countUsers($filter, ['dn'], $limit);
 	}
@@ -217,15 +179,15 @@ class Wizard extends LDAPUtility {
 	/**
 	 * detects the display name attribute. If a setting is already present that
 	 * returns at least one hit, the detection will be canceled.
-	 * @return WizardResult|bool
+	 * @return WizardResult|false
 	 * @throws \Exception
 	 */
 	public function detectUserDisplayNameAttribute() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapUserFilter',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 
@@ -263,11 +225,11 @@ class Wizard extends LDAPUtility {
 	 * @return WizardResult|bool
 	 */
 	public function detectEmailAttribute() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapUserFilter',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 
@@ -297,7 +259,7 @@ class Wizard extends LDAPUtility {
 			$this->applyFind('ldap_email_attr', $winner);
 			if ($writeLog) {
 				$this->logger->info(
-					'The mail attribute has automatically been reset, '.
+					'The mail attribute has automatically been reset, ' .
 					'because the original value did not return any results.',
 					['app' => 'user_ldap']
 				);
@@ -308,19 +270,23 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return WizardResult
+	 * @return WizardResult|false
 	 * @throws \Exception
 	 */
 	public function determineAttributes() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapUserFilter',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 
 		$attributes = $this->getUserAttributes();
+
+		if (!is_array($attributes)) {
+			throw new \Exception('Failed to determine user attributes');
+		}
 
 		natcasesort($attributes);
 		$attributes = array_values($attributes);
@@ -337,15 +303,15 @@ class Wizard extends LDAPUtility {
 
 	/**
 	 * detects the available LDAP attributes
-	 * @return array|false The instance's WizardResult instance
+	 * @return array|false
 	 * @throws \Exception
 	 */
 	private function getUserAttributes() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapUserFilter',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 		$cr = $this->getConnection();
@@ -359,8 +325,12 @@ class Wizard extends LDAPUtility {
 		if (!$this->ldap->isResource($rr)) {
 			return false;
 		}
+		/** @var \LDAP\Result $rr */
 		$er = $this->ldap->firstEntry($cr, $rr);
 		$attributes = $this->ldap->getAttributes($cr, $er);
+		if ($attributes === false) {
+			return false;
+		}
 		$pureAttributes = [];
 		for ($i = 0; $i < $attributes['count']; $i++) {
 			$pureAttributes[] = $attributes[$i];
@@ -390,17 +360,15 @@ class Wizard extends LDAPUtility {
 
 	/**
 	 * detects the available LDAP groups
-	 * @param string $dbKey
-	 * @param string $confKey
-	 * @param bool $testMemberOf
 	 * @return WizardResult|false the instance's WizardResult instance
 	 * @throws \Exception
 	 */
-	private function determineGroups($dbKey, $confKey, $testMemberOf = true) {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-		])) {
+	private function determineGroups(string $dbKey, string $confKey, bool $testMemberOf = true) {
+		$reqs = ['ldapHost', 'ldapBase'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 		$cr = $this->getConnection();
@@ -411,7 +379,7 @@ class Wizard extends LDAPUtility {
 		$this->fetchGroups($dbKey, $confKey);
 
 		if ($testMemberOf) {
-			$this->configuration->hasMemberOfFilterSupport = $this->testMemberOf();
+			$this->configuration->hasMemberOfFilterSupport = (string)$this->testMemberOf();
 			$this->result->markChange();
 			if (!$this->configuration->hasMemberOfFilterSupport) {
 				throw new \Exception('memberOf is not supported by the server');
@@ -424,17 +392,14 @@ class Wizard extends LDAPUtility {
 	/**
 	 * fetches all groups from LDAP and adds them to the result object
 	 *
-	 * @param string $dbKey
-	 * @param string $confKey
-	 * @return array $groupEntries
 	 * @throws \Exception
 	 */
-	public function fetchGroups($dbKey, $confKey) {
+	public function fetchGroups(string $dbKey, string $confKey): array {
 		$obclasses = ['posixGroup', 'group', 'zimbraDistributionList', 'groupOfNames', 'groupOfUniqueNames'];
 
 		$filterParts = [];
 		foreach ($obclasses as $obclass) {
-			$filterParts[] = 'objectclass='.$obclass;
+			$filterParts[] = 'objectclass=' . $obclass;
 		}
 		//we filter for everything
 		//- that looks like a group and
@@ -451,7 +416,7 @@ class Wizard extends LDAPUtility {
 			// detection will fail later
 			$result = $this->access->searchGroups($filter, ['cn', 'dn'], $limit, $offset);
 			foreach ($result as $item) {
-				if (!isset($item['cn']) && !is_array($item['cn']) && !isset($item['cn'][0])) {
+				if (!isset($item['cn']) || !is_array($item['cn']) || !isset($item['cn'][0])) {
 					// just in case - no issue known
 					continue;
 				}
@@ -476,11 +441,15 @@ class Wizard extends LDAPUtility {
 		return $groupEntries;
 	}
 
+	/**
+	 * @return WizardResult|false
+	 */
 	public function determineGroupMemberAssoc() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapGroupFilter',
-		])) {
+		$reqs = ['ldapHost', 'ldapGroupFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 		$attribute = $this->detectGroupMemberAssoc();
@@ -499,10 +468,11 @@ class Wizard extends LDAPUtility {
 	 * @throws \Exception
 	 */
 	public function determineGroupObjectClasses() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 		$cr = $this->getConnection();
@@ -522,14 +492,15 @@ class Wizard extends LDAPUtility {
 
 	/**
 	 * detects the available object classes
-	 * @return WizardResult
+	 * @return WizardResult|false
 	 * @throws \Exception
 	 */
 	public function determineUserObjectClasses() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return  false;
 		}
 		$cr = $this->getConnection();
@@ -556,10 +527,11 @@ class Wizard extends LDAPUtility {
 	 * @throws \Exception
 	 */
 	public function getGroupFilter() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return false;
 		}
 		//make sure the use display name is set
@@ -580,10 +552,11 @@ class Wizard extends LDAPUtility {
 	 * @throws \Exception
 	 */
 	public function getUserListFilter() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return false;
 		}
 		//make sure the use display name is set
@@ -602,15 +575,15 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return bool|WizardResult
+	 * @return WizardResult|false
 	 * @throws \Exception
 	 */
 	public function getUserLoginFilter() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapUserFilter',
-		])) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return false;
 		}
 
@@ -624,23 +597,19 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return bool|WizardResult
-	 * @param string $loginName
+	 * @return WizardResult|false
 	 * @throws \Exception
 	 */
-	public function testLoginName($loginName) {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-			'ldapBase',
-			'ldapLoginFilter',
-		])) {
+	public function testLoginName(string $loginName) {
+		$reqs = ['ldapHost', 'ldapBase', 'ldapUserFilter'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return false;
 		}
 
 		$cr = $this->access->connection->getConnectionResource();
-		if (!$this->ldap->isResource($cr)) {
-			throw new \Exception('connection error');
-		}
 
 		if (mb_strpos($this->access->connection->ldapLoginFilter, '%uid', 0, 'UTF-8')
 			=== false) {
@@ -670,16 +639,12 @@ class Wizard extends LDAPUtility {
 		$this->checkHost();
 		$portSettings = $this->getPortSettingsToTry();
 
-		if (!is_array($portSettings)) {
-			throw new \Exception(print_r($portSettings, true));
-		}
-
 		//proceed from the best configuration and return on first success
 		foreach ($portSettings as $setting) {
 			$p = $setting['port'];
 			$t = $setting['tls'];
 			$this->logger->debug(
-				'Wiz: trying port '. $p . ', TLS '. $t,
+				'Wiz: trying port ' . $p . ', TLS ' . $t,
 				['app' => 'user_ldap']
 			);
 			//connectAndBind may throw Exception, it needs to be caught by the
@@ -700,8 +665,8 @@ class Wizard extends LDAPUtility {
 
 			if ($settingsFound === true) {
 				$config = [
-					'ldapPort' => $p,
-					'ldapTLS' => (int)$t
+					'ldapPort' => (string)$p,
+					'ldapTLS' => (string)$t,
 				];
 				$this->configuration->setConfiguration($config);
 				$this->logger->debug(
@@ -722,9 +687,11 @@ class Wizard extends LDAPUtility {
 	 * @return WizardResult|false WizardResult on success, false otherwise
 	 */
 	public function guessBaseDN() {
-		if (!$this->checkRequirements(['ldapHost',
-			'ldapPort',
-		])) {
+		$reqs = ['ldapHost'];
+		if (!$this->configuration->usesLdapi()) {
+			$reqs[] = 'ldapPort';
+		}
+		if (!$this->checkRequirements($reqs)) {
 			return false;
 		}
 
@@ -742,7 +709,7 @@ class Wizard extends LDAPUtility {
 		//this did not help :(
 		//Let's see whether we can parse the Host URL and convert the domain to
 		//a base DN
-		$helper = new Helper(\OC::$server->getConfig(), \OC::$server->getDatabaseConnection());
+		$helper = \OC::$server->get(Helper::class);
 		$domain = $helper->getDomainFromURL($this->configuration->ldapHost);
 		if (!$domain) {
 			return false;
@@ -768,7 +735,7 @@ class Wizard extends LDAPUtility {
 	 * @param string $value the (detected) value
 	 *
 	 */
-	private function applyFind($key, $value) {
+	private function applyFind(string $key, string $value): void {
 		$this->result->addChange($key, $value);
 		$this->configuration->setConfiguration([$key => $value]);
 	}
@@ -778,23 +745,23 @@ class Wizard extends LDAPUtility {
 	 * field. In this case the port will be stripped off, but also stored as
 	 * setting.
 	 */
-	private function checkHost() {
+	private function checkHost(): void {
 		$host = $this->configuration->ldapHost;
 		$hostInfo = parse_url($host);
 
 		//removes Port from Host
 		if (is_array($hostInfo) && isset($hostInfo['port'])) {
 			$port = $hostInfo['port'];
-			$host = str_replace(':'.$port, '', $host);
+			$host = str_replace(':' . $port, '', $host);
 			$this->applyFind('ldap_host', $host);
-			$this->applyFind('ldap_port', $port);
+			$this->applyFind('ldap_port', (string)$port);
 		}
 	}
 
 	/**
 	 * tries to detect the group member association attribute which is
 	 * one of 'uniqueMember', 'memberUid', 'member', 'gidNumber'
-	 * @return string|false, string with the attribute name, false on error
+	 * @return string|false string with the attribute name, false on error
 	 * @throws \Exception
 	 */
 	private function detectGroupMemberAssoc() {
@@ -812,6 +779,7 @@ class Wizard extends LDAPUtility {
 		if (!$this->ldap->isResource($rr)) {
 			return false;
 		}
+		/** @var \LDAP\Result $rr */
 		$er = $this->ldap->firstEntry($cr, $rr);
 		while ($this->ldap->isResource($er)) {
 			$this->ldap->getDN($cr, $er);
@@ -840,7 +808,7 @@ class Wizard extends LDAPUtility {
 	 * @return bool true on success, false otherwise
 	 * @throws \Exception
 	 */
-	private function testBaseDN($base) {
+	private function testBaseDN(string $base): bool {
 		$cr = $this->getConnection();
 		if (!$cr) {
 			throw new \Exception('Could not connect to LDAP');
@@ -853,11 +821,12 @@ class Wizard extends LDAPUtility {
 			$errorNo = $this->ldap->errno($cr);
 			$errorMsg = $this->ldap->error($cr);
 			$this->logger->info(
-				'Wiz: Could not search base '.$base.' Error '.$errorNo.': '.$errorMsg,
+				'Wiz: Could not search base ' . $base . ' Error ' . $errorNo . ': ' . $errorMsg,
 				['app' => 'user_ldap']
 			);
 			return false;
 		}
+		/** @var \LDAP\Result $rr */
 		$entries = $this->ldap->countEntries($cr, $rr);
 		return ($entries !== false) && ($entries > 0);
 	}
@@ -871,7 +840,7 @@ class Wizard extends LDAPUtility {
 	 * @return bool true if it does, false otherwise
 	 * @throws \Exception
 	 */
-	private function testMemberOf() {
+	private function testMemberOf(): bool {
 		$cr = $this->getConnection();
 		if (!$cr) {
 			throw new \Exception('Could not connect to LDAP');
@@ -885,13 +854,12 @@ class Wizard extends LDAPUtility {
 
 	/**
 	 * creates an LDAP Filter from given configuration
-	 * @param integer $filterType int, for which use case the filter shall be created
-	 * can be any of self::LFILTER_USER_LIST, self::LFILTER_LOGIN or
-	 * self::LFILTER_GROUP_LIST
-	 * @return string|false string with the filter on success, false otherwise
+	 * @param int $filterType int, for which use case the filter shall be created
+	 *                        can be any of self::LFILTER_USER_LIST, self::LFILTER_LOGIN or
+	 *                        self::LFILTER_GROUP_LIST
 	 * @throws \Exception
 	 */
-	private function composeLdapFilter($filterType) {
+	private function composeLdapFilter(int $filterType): string {
 		$filter = '';
 		$parts = 0;
 		switch ($filterType) {
@@ -901,7 +869,7 @@ class Wizard extends LDAPUtility {
 				if (is_array($objcs) && count($objcs) > 0) {
 					$filter .= '(|';
 					foreach ($objcs as $objc) {
-						$filter .= '(objectclass=' . $objc . ')';
+						$filter .= '(objectclass=' . ldap_escape($objc, '', LDAP_ESCAPE_FILTER) . ')';
 					}
 					$filter .= ')';
 					$parts++;
@@ -917,20 +885,21 @@ class Wizard extends LDAPUtility {
 						}
 						$base = $this->configuration->ldapBase[0];
 						foreach ($cns as $cn) {
-							$rr = $this->ldap->search($cr, $base, 'cn=' . $cn, ['dn', 'primaryGroupToken']);
+							$rr = $this->ldap->search($cr, $base, 'cn=' . ldap_escape($cn, '', LDAP_ESCAPE_FILTER), ['dn', 'primaryGroupToken']);
 							if (!$this->ldap->isResource($rr)) {
 								continue;
 							}
+							/** @var \LDAP\Result $rr */
 							$er = $this->ldap->firstEntry($cr, $rr);
 							$attrs = $this->ldap->getAttributes($cr, $er);
 							$dn = $this->ldap->getDN($cr, $er);
 							if ($dn === false || $dn === '') {
 								continue;
 							}
-							$filterPart = '(memberof=' . $dn . ')';
+							$filterPart = '(memberof=' . ldap_escape($dn, '', LDAP_ESCAPE_FILTER) . ')';
 							if (isset($attrs['primaryGroupToken'])) {
 								$pgt = $attrs['primaryGroupToken'][0];
-								$primaryFilterPart = '(primaryGroupID=' . $pgt .')';
+								$primaryFilterPart = '(primaryGroupID=' . ldap_escape($pgt, '', LDAP_ESCAPE_FILTER) . ')';
 								$filterPart = '(|' . $filterPart . $primaryFilterPart . ')';
 							}
 							$filter .= $filterPart;
@@ -954,7 +923,7 @@ class Wizard extends LDAPUtility {
 				if (is_array($objcs) && count($objcs) > 0) {
 					$filter .= '(|';
 					foreach ($objcs as $objc) {
-						$filter .= '(objectclass=' . $objc . ')';
+						$filter .= '(objectclass=' . ldap_escape($objc, '', LDAP_ESCAPE_FILTER) . ')';
 					}
 					$filter .= ')';
 					$parts++;
@@ -964,7 +933,7 @@ class Wizard extends LDAPUtility {
 				if (is_array($cns) && count($cns) > 0) {
 					$filter .= '(|';
 					foreach ($cns as $cn) {
-						$filter .= '(cn=' . $cn . ')';
+						$filter .= '(cn=' . ldap_escape($cn, '', LDAP_ESCAPE_FILTER) . ')';
 					}
 					$filter .= ')';
 				}
@@ -980,6 +949,9 @@ class Wizard extends LDAPUtility {
 				$loginpart = '=%uid';
 				$filterUsername = '';
 				$userAttributes = $this->getUserAttributes();
+				if ($userAttributes === false) {
+					throw new \Exception('Failed to get user attributes');
+				}
 				$userAttributes = array_change_key_case(array_flip($userAttributes));
 				$parts = 0;
 
@@ -1027,12 +999,12 @@ class Wizard extends LDAPUtility {
 					$filterLogin .= ')';
 				}
 
-				$filter = '(&'.$ulf.$filterLogin.')';
+				$filter = '(&' . $ulf . $filterLogin . ')';
 				break;
 		}
 
 		$this->logger->debug(
-			'Wiz: Final filter '.$filter,
+			'Wiz: Final filter ' . $filter,
 			['app' => 'user_ldap']
 		);
 
@@ -1044,24 +1016,24 @@ class Wizard extends LDAPUtility {
 	 *
 	 * @param int $port the port to connect with
 	 * @param bool $tls whether startTLS is to be used
-	 * @return bool
 	 * @throws \Exception
 	 */
-	private function connectAndBind($port, $tls) {
+	private function connectAndBind(int $port, bool $tls): bool {
 		//connect, does not really trigger any server communication
 		$host = $this->configuration->ldapHost;
-		$hostInfo = parse_url($host);
-		if (!$hostInfo) {
+		$hostInfo = parse_url((string)$host);
+		if (!is_string($host) || !$hostInfo) {
 			throw new \Exception(self::$l->t('Invalid Host'));
 		}
 		$this->logger->debug(
 			'Wiz: Attempting to connect',
 			['app' => 'user_ldap']
 		);
-		$cr = $this->ldap->connect($host, $port);
+		$cr = $this->ldap->connect($host, (string)$port);
 		if (!$this->ldap->isResource($cr)) {
 			throw new \Exception(self::$l->t('Invalid Host'));
 		}
+		/** @var \LDAP\Connection $cr */
 
 		//set LDAP options
 		$this->ldap->setOption($cr, LDAP_OPT_PROTOCOL_VERSION, 3);
@@ -1086,7 +1058,7 @@ class Wizard extends LDAPUtility {
 				$this->configuration->ldapAgentPassword
 			);
 			$errNo = $this->ldap->errno($cr);
-			$error = ldap_error($cr);
+			$error = $this->ldap->error($cr);
 			$this->ldap->unbind($cr);
 		} catch (ServerNotAvailableException $e) {
 			return false;
@@ -1094,7 +1066,7 @@ class Wizard extends LDAPUtility {
 
 		if ($login === true) {
 			$this->logger->debug(
-				'Wiz: Bind successful to Port '. $port . ' TLS ' . (int)$tls,
+				'Wiz: Bind successful to Port ' . $port . ' TLS ' . (int)$tls,
 				['app' => 'user_ldap']
 			);
 			return true;
@@ -1110,9 +1082,9 @@ class Wizard extends LDAPUtility {
 	/**
 	 * checks whether a valid combination of agent and password has been
 	 * provided (either two values or nothing for anonymous connect)
-	 * @return bool, true if everything is fine, false otherwise
+	 * @return bool true if everything is fine, false otherwise
 	 */
-	private function checkAgentRequirements() {
+	private function checkAgentRequirements(): bool {
 		$agent = $this->configuration->ldapAgentName;
 		$pwd = $this->configuration->ldapAgentPassword;
 
@@ -1122,11 +1094,7 @@ class Wizard extends LDAPUtility {
 		;
 	}
 
-	/**
-	 * @param array $reqs
-	 * @return bool
-	 */
-	private function checkRequirements($reqs) {
+	private function checkRequirements(array $reqs): bool {
 		$this->checkAgentRequirements();
 		foreach ($reqs as $option) {
 			$value = $this->configuration->$option;
@@ -1143,12 +1111,12 @@ class Wizard extends LDAPUtility {
 	 * @param string[] $filters array, the filters that shall be used in the search
 	 * @param string $attr the attribute of which a list of values shall be returned
 	 * @param int $dnReadLimit the amount of how many DNs should be analyzed.
-	 * The lower, the faster
+	 *                         The lower, the faster
 	 * @param string $maxF string. if not null, this variable will have the filter that
-	 * yields most result entries
+	 *                     yields most result entries
 	 * @return array|false an array with the values on success, false otherwise
 	 */
-	public function cumulativeSearchOnAttribute($filters, $attr, $dnReadLimit = 3, &$maxF = null) {
+	public function cumulativeSearchOnAttribute(array $filters, string $attr, int $dnReadLimit = 3, ?string &$maxF = null) {
 		$dnRead = [];
 		$foundItems = [];
 		$maxEntries = 0;
@@ -1161,6 +1129,7 @@ class Wizard extends LDAPUtility {
 		if (!$this->ldap->isResource($cr)) {
 			return false;
 		}
+		/** @var \LDAP\Connection $cr */
 		$lastFilter = null;
 		if (isset($filters[count($filters) - 1])) {
 			$lastFilter = $filters[count($filters) - 1];
@@ -1175,6 +1144,7 @@ class Wizard extends LDAPUtility {
 			if (!$this->ldap->isResource($rr)) {
 				continue;
 			}
+			/** @var \LDAP\Result $rr */
 			$entries = $this->ldap->countEntries($cr, $rr);
 			$getEntryFunc = 'firstEntry';
 			if (($entries !== false) && ($entries > 0)) {
@@ -1192,20 +1162,19 @@ class Wizard extends LDAPUtility {
 					$rr = $entry; //will be expected by nextEntry next round
 					$attributes = $this->ldap->getAttributes($cr, $entry);
 					$dn = $this->ldap->getDN($cr, $entry);
-					if ($dn === false || in_array($dn, $dnRead)) {
+					if ($attributes === false || $dn === false || in_array($dn, $dnRead)) {
 						continue;
 					}
 					$newItems = [];
-					$state = $this->getAttributeValuesFromEntry($attributes,
+					$state = $this->getAttributeValuesFromEntry(
+						$attributes,
 						$attr,
-						$newItems);
+						$newItems
+					);
 					$dnReadCount++;
 					$foundItems = array_merge($foundItems, $newItems);
-					$this->resultCache[$dn][$attr] = $newItems;
 					$dnRead[] = $dn;
-				} while (($state === self::LRESULT_PROCESSED_SKIP
-						|| $this->ldap->isResource($entry))
-						&& ($dnReadLimit === 0 || $dnReadCount < $dnReadLimit));
+				} while ($dnReadLimit === 0 || $dnReadCount < $dnReadLimit);
 			}
 		}
 
@@ -1218,20 +1187,20 @@ class Wizard extends LDAPUtility {
 	 * @param string $attr the attribute to look for
 	 * @param string $dbkey the dbkey of the setting the feature is connected to
 	 * @param string $confkey the confkey counterpart for the $dbkey as used in the
-	 * Configuration class
+	 *                        Configuration class
 	 * @param bool $po whether the objectClass with most result entries
-	 * shall be pre-selected via the result
-	 * @return array|false list of found items.
+	 *                 shall be pre-selected via the result
+	 * @return array list of found items.
 	 * @throws \Exception
 	 */
-	private function determineFeature($objectclasses, $attr, $dbkey, $confkey, $po = false) {
+	private function determineFeature(array $objectclasses, string $attr, string $dbkey, string $confkey, bool $po = false): array {
 		$cr = $this->getConnection();
 		if (!$cr) {
 			throw new \Exception('Could not connect to LDAP');
 		}
 		$p = 'objectclass=';
 		foreach ($objectclasses as $key => $value) {
-			$objectclasses[$key] = $p.$value;
+			$objectclasses[$key] = $p . $value;
 		}
 		$maxEntryObjC = '';
 
@@ -1271,18 +1240,17 @@ class Wizard extends LDAPUtility {
 	 * @param array $result the return value from ldap_get_attributes
 	 * @param string $attribute the attribute values to look for
 	 * @param array &$known new values will be appended here
-	 * @return int, state on of the class constants LRESULT_PROCESSED_OK,
-	 * LRESULT_PROCESSED_INVALID or LRESULT_PROCESSED_SKIP
+	 * @return int state on of the class constants LRESULT_PROCESSED_OK,
+	 *             LRESULT_PROCESSED_INVALID or LRESULT_PROCESSED_SKIP
 	 */
-	private function getAttributeValuesFromEntry($result, $attribute, &$known) {
-		if (!is_array($result)
-		   || !isset($result['count'])
+	private function getAttributeValuesFromEntry(array $result, string $attribute, array &$known): int {
+		if (!isset($result['count'])
 		   || !$result['count'] > 0) {
 			return self::LRESULT_PROCESSED_INVALID;
 		}
 
 		// strtolower on all keys for proper comparison
-		$result = \OCP\Util::mb_array_change_key_case($result);
+		$result = Util::mb_array_change_key_case($result);
 		$attribute = strtolower($attribute);
 		if (isset($result[$attribute])) {
 			foreach ($result[$attribute] as $key => $val) {
@@ -1300,9 +1268,9 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return bool|mixed
+	 * @return \LDAP\Connection|false a link resource on success, otherwise false
 	 */
-	private function getConnection() {
+	private function getConnection(): \LDAP\Connection|false {
 		if (!is_null($this->cr)) {
 			return $this->cr;
 		}
@@ -1312,10 +1280,14 @@ class Wizard extends LDAPUtility {
 			$this->configuration->ldapPort
 		);
 
+		if ($cr === false) {
+			return false;
+		}
+
 		$this->ldap->setOption($cr, LDAP_OPT_PROTOCOL_VERSION, 3);
 		$this->ldap->setOption($cr, LDAP_OPT_REFERRALS, 0);
 		$this->ldap->setOption($cr, LDAP_OPT_NETWORK_TIMEOUT, self::LDAP_NW_TIMEOUT);
-		if ($this->configuration->ldapTLS === 1) {
+		if ($this->configuration->ldapTLS) {
 			$this->ldap->startTls($cr);
 		}
 
@@ -1331,9 +1303,9 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return array
+	 * @return array<array{port:int,tls:bool}>
 	 */
-	private function getDefaultLdapPortSettings() {
+	private function getDefaultLdapPortSettings(): array {
 		static $settings = [
 			['port' => 7636, 'tls' => false],
 			['port' => 636, 'tls' => false],
@@ -1346,9 +1318,9 @@ class Wizard extends LDAPUtility {
 	}
 
 	/**
-	 * @return array
+	 * @return array<array{port:int,tls:bool}>
 	 */
-	private function getPortSettingsToTry() {
+	private function getPortSettingsToTry(): array {
 		//389 ← LDAP / Unencrypted or StartTLS
 		//636 ← LDAPS / SSL
 		//7xxx ← UCS. need to be checked first, because both ports may be open
@@ -1365,6 +1337,8 @@ class Wizard extends LDAPUtility {
 				$portSettings[] = ['port' => $port, 'tls' => true];
 			}
 			$portSettings[] = ['port' => $port, 'tls' => false];
+		} elseif ($this->configuration->usesLdapi()) {
+			$portSettings[] = ['port' => 0, 'tls' => false];
 		}
 
 		//default ports

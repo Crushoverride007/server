@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\SMB\Wrapped;
@@ -73,7 +72,7 @@ class Share extends AbstractShare {
 		$this->server = $server;
 		$this->name = $name;
 		$this->system = $system;
-		$this->parser = new Parser($server->getTimeZone());
+		$this->parser = new Parser('UTC');
 	}
 
 	private function getAuthFileArgument(): string {

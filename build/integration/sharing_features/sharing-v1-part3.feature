@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 20198 Nextcloud GmbH and Nextcloud contributors
+# SPDX-License-Identifier: AGPL-3.0-or-later
 Feature: sharing
   Background:
     Given using api version "1"
@@ -513,6 +515,20 @@ Feature: sharing
     When User "user1" moved file "/textfile0.txt" to "/shared/shared_file.txt"
     Then as "user1" the file "/shared/shared_file.txt" exists
     And as "user0" the file "/shared/shared_file.txt" exists
+
+  Scenario: receiving shares into a configured share_folder
+    Given As an "admin"
+    And invoking occ with "config:system:set share_folder --value received_shares"
+    And user "user0" exists
+    And user "user1" exists
+    And user "user0" created a folder "/shared_folder"
+    And User "user0" moved file "/textfile0.txt" to "/shared_file.txt"
+    When folder "/shared_folder" of user "user0" is shared with user "user1"
+    And user "user1" accepts last share
+    Then as "user1" the file "/received_shares/shared_folder" exists
+    When file "/shared_file.txt" of user "user0" is shared with user "user1"
+    And user "user1" accepts last share
+    Then as "user1" the file "/received_shares/shared_file.txt" exists
 
   Scenario: Owner of subshares is adjusted after moving into received share
     Given As an "admin"

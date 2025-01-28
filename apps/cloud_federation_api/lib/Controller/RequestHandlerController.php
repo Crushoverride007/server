@@ -1,32 +1,28 @@
 <?php
 /**
- * @copyright Copyright (c) 2018 Bjoern Schiessle <bjoern@schiessle.org>
- *
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\CloudFederationAPI\Controller;
 
+use NCU\Federation\ISignedCloudFederationProvider;
+use NCU\Security\Signature\Exceptions\IdentityNotFoundException;
+use NCU\Security\Signature\Exceptions\IncomingRequestException;
+use NCU\Security\Signature\Exceptions\SignatoryNotFoundException;
+use NCU\Security\Signature\Exceptions\SignatureException;
+use NCU\Security\Signature\Exceptions\SignatureNotFoundException;
+use NCU\Security\Signature\IIncomingSignedRequest;
+use NCU\Security\Signature\ISignatureManager;
+use OC\OCM\OCMSignatoryManager;
 use OCA\CloudFederationAPI\Config;
+use OCA\CloudFederationAPI\ResponseDefinitions;
+use OCA\FederatedFileSharing\AddressHandler;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\OpenAPI;
+use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\Federation\Exceptions\ActionNotSupportedException;
 use OCP\Federation\Exceptions\AuthenticationFailedException;
@@ -36,98 +32,84 @@ use OCP\Federation\Exceptions\ProviderDoesNotExistsException;
 use OCP\Federation\ICloudFederationFactory;
 use OCP\Federation\ICloudFederationProviderManager;
 use OCP\Federation\ICloudIdManager;
+use OCP\IAppConfig;
 use OCP\IGroupManager;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
 use OCP\Share\Exceptions\ShareNotFound;
+use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 /**
- * Class RequestHandlerController
- *
- * handle API between different Cloud instances
+ * Open-Cloud-Mesh-API
  *
  * @package OCA\CloudFederationAPI\Controller
+ *
+ * @psalm-import-type CloudFederationAPIAddShare from ResponseDefinitions
+ * @psalm-import-type CloudFederationAPIValidationError from ResponseDefinitions
+ * @psalm-import-type CloudFederationAPIError from ResponseDefinitions
  */
+#[OpenAPI(scope: OpenAPI::SCOPE_FEDERATION)]
 class RequestHandlerController extends Controller {
-
-	/** @var LoggerInterface */
-	private $logger;
-
-	/** @var IUserManager */
-	private $userManager;
-
-	/** @var IGroupManager */
-	private $groupManager;
-
-	/** @var IURLGenerator */
-	private $urlGenerator;
-
-	/** @var ICloudFederationProviderManager */
-	private $cloudFederationProviderManager;
-
-	/** @var Config */
-	private $config;
-
-	/** @var ICloudFederationFactory */
-	private $factory;
-
-	/** @var ICloudIdManager */
-	private $cloudIdManager;
-
-	public function __construct($appName,
-								IRequest $request,
-								LoggerInterface $logger,
-								IUserManager $userManager,
-								IGroupManager $groupManager,
-								IURLGenerator $urlGenerator,
-								ICloudFederationProviderManager $cloudFederationProviderManager,
-								Config $config,
-								ICloudFederationFactory $factory,
-								ICloudIdManager $cloudIdManager
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private LoggerInterface $logger,
+		private IUserManager $userManager,
+		private IGroupManager $groupManager,
+		private IURLGenerator $urlGenerator,
+		private ICloudFederationProviderManager $cloudFederationProviderManager,
+		private Config $config,
+		private readonly AddressHandler $addressHandler,
+		private readonly IAppConfig $appConfig,
+		private ICloudFederationFactory $factory,
+		private ICloudIdManager $cloudIdManager,
+		private readonly ISignatureManager $signatureManager,
+		private readonly OCMSignatoryManager $signatoryManager,
 	) {
 		parent::__construct($appName, $request);
-
-		$this->logger = $logger;
-		$this->userManager = $userManager;
-		$this->groupManager = $groupManager;
-		$this->urlGenerator = $urlGenerator;
-		$this->cloudFederationProviderManager = $cloudFederationProviderManager;
-		$this->config = $config;
-		$this->factory = $factory;
-		$this->cloudIdManager = $cloudIdManager;
 	}
 
 	/**
-	 * add share
+	 * Add share
 	 *
-	 * @NoCSRFRequired
-	 * @PublicPage
-	 * @BruteForceProtection(action=receiveFederatedShare)
+	 * @param string $shareWith The user who the share will be shared with
+	 * @param string $name The resource name (e.g. document.odt)
+	 * @param string|null $description Share description
+	 * @param string $providerId Resource UID on the provider side
+	 * @param string $owner Provider specific UID of the user who owns the resource
+	 * @param string|null $ownerDisplayName Display name of the user who shared the item
+	 * @param string|null $sharedBy Provider specific UID of the user who shared the resource
+	 * @param string|null $sharedByDisplayName Display name of the user who shared the resource
+	 * @param array{name: list<string>, options: array<string, mixed>} $protocol e,.g. ['name' => 'webdav', 'options' => ['username' => 'john', 'permissions' => 31]]
+	 * @param string $shareType 'group' or 'user' share
+	 * @param string $resourceType 'file', 'calendar',...
 	 *
-	 * @param string $shareWith
-	 * @param string $name resource name (e.g. document.odt)
-	 * @param string $description share description (optional)
-	 * @param string $providerId resource UID on the provider side
-	 * @param string $owner provider specific UID of the user who owns the resource
-	 * @param string $ownerDisplayName display name of the user who shared the item
-	 * @param string $sharedBy provider specific UID of the user who shared the resource
-	 * @param string $sharedByDisplayName display name of the user who shared the resource
-	 * @param array $protocol (e,.g. ['name' => 'webdav', 'options' => ['username' => 'john', 'permissions' => 31]])
-	 * @param string $shareType ('group' or 'user' share)
-	 * @param $resourceType ('file', 'calendar',...)
-	 * @return Http\DataResponse|JSONResponse
+	 * @return JSONResponse<Http::STATUS_CREATED, CloudFederationAPIAddShare, array{}>|JSONResponse<Http::STATUS_BAD_REQUEST, CloudFederationAPIValidationError, array{}>|JSONResponse<Http::STATUS_NOT_IMPLEMENTED, CloudFederationAPIError, array{}>
 	 *
-	 * Example: curl -H "Content-Type: application/json" -X POST -d '{"shareWith":"admin1@serve1","name":"welcome server2.txt","description":"desc","providerId":"2","owner":"admin2@http://localhost/server2","ownerDisplayName":"admin2 display","shareType":"user","resourceType":"file","protocol":{"name":"webdav","options":{"sharedSecret":"secret","permissions":"webdav-property"}}}' http://localhost/server/index.php/ocm/shares
+	 * 201: The notification was successfully received. The display name of the recipient might be returned in the body
+	 * 400: Bad request due to invalid parameters, e.g. when `shareWith` is not found or required properties are missing
+	 * 501: Share type or the resource type is not supported
 	 */
+	#[PublicPage]
+	#[NoCSRFRequired]
+	#[BruteForceProtection(action: 'receiveFederatedShare')]
 	public function addShare($shareWith, $name, $description, $providerId, $owner, $ownerDisplayName, $sharedBy, $sharedByDisplayName, $protocol, $shareType, $resourceType) {
+		try {
+			// if request is signed and well signed, no exception are thrown
+			// if request is not signed and host is known for not supporting signed request, no exception are thrown
+			$signedRequest = $this->getSignedRequest();
+			$this->confirmSignedOrigin($signedRequest, 'owner', $owner);
+		} catch (IncomingRequestException $e) {
+			$this->logger->warning('incoming request exception', ['exception' => $e]);
+			return new JSONResponse(['message' => $e->getMessage(), 'validationErrors' => []], Http::STATUS_BAD_REQUEST);
+		}
 
 		// check if all required parameters are set
 		if ($shareWith === null ||
 			$name === null ||
 			$providerId === null ||
-			$owner === null ||
 			$resourceType === null ||
 			$shareType === null ||
 			!is_array($protocol) ||
@@ -137,7 +119,10 @@ class RequestHandlerController extends Controller {
 			!isset($protocol['options']['sharedSecret'])
 		) {
 			return new JSONResponse(
-				['message' => 'Missing arguments'],
+				[
+					'message' => 'Missing arguments',
+					'validationErrors' => [],
+				],
 				Http::STATUS_BAD_REQUEST
 			);
 		}
@@ -158,7 +143,10 @@ class RequestHandlerController extends Controller {
 
 			if (!$this->userManager->userExists($shareWith)) {
 				$response = new JSONResponse(
-					['message' => 'User "' . $shareWith . '" does not exists at ' . $this->urlGenerator->getBaseUrl()],
+					[
+						'message' => 'User "' . $shareWith . '" does not exists at ' . $this->urlGenerator->getBaseUrl(),
+						'validationErrors' => [],
+					],
 					Http::STATUS_BAD_REQUEST
 				);
 				$response->throttle();
@@ -169,7 +157,10 @@ class RequestHandlerController extends Controller {
 		if ($shareType === 'group') {
 			if (!$this->groupManager->groupExists($shareWith)) {
 				$response = new JSONResponse(
-					['message' => 'Group "' . $shareWith . '" does not exists at ' . $this->urlGenerator->getBaseUrl()],
+					[
+						'message' => 'Group "' . $shareWith . '" does not exists at ' . $this->urlGenerator->getBaseUrl(),
+						'validationErrors' => [],
+					],
 					Http::STATUS_BAD_REQUEST
 				);
 				$response->throttle();
@@ -192,50 +183,55 @@ class RequestHandlerController extends Controller {
 			$share = $this->factory->getCloudFederationShare($shareWith, $name, $description, $providerId, $owner, $ownerDisplayName, $sharedBy, $sharedByDisplayName, '', $shareType, $resourceType);
 			$share->setProtocol($protocol);
 			$provider->shareReceived($share);
-		} catch (ProviderDoesNotExistsException $e) {
+		} catch (ProviderDoesNotExistsException|ProviderCouldNotAddShareException $e) {
 			return new JSONResponse(
 				['message' => $e->getMessage()],
 				Http::STATUS_NOT_IMPLEMENTED
 			);
-		} catch (ProviderCouldNotAddShareException $e) {
-			return new JSONResponse(
-				['message' => $e->getMessage()],
-				$e->getCode()
-			);
 		} catch (\Exception $e) {
 			$this->logger->error($e->getMessage(), ['exception' => $e]);
 			return new JSONResponse(
-				['message' => 'Internal error at ' . $this->urlGenerator->getBaseUrl()],
+				[
+					'message' => 'Internal error at ' . $this->urlGenerator->getBaseUrl(),
+					'validationErrors' => [],
+				],
 				Http::STATUS_BAD_REQUEST
 			);
 		}
 
-		$user = $this->userManager->get($shareWith);
-		$recipientDisplayName = '';
-		if ($user) {
-			$recipientDisplayName = $user->getDisplayName();
+		$responseData = ['recipientDisplayName' => ''];
+		if ($shareType === 'user') {
+			$user = $this->userManager->get($shareWith);
+			if ($user) {
+				$responseData = [
+					'recipientDisplayName' => $user->getDisplayName(),
+					'recipientUserId' => $user->getUID(),
+				];
+			}
 		}
 
-		return new JSONResponse(
-			['recipientDisplayName' => $recipientDisplayName],
-			Http::STATUS_CREATED);
+		return new JSONResponse($responseData, Http::STATUS_CREATED);
 	}
 
 	/**
-	 * receive notification about existing share
+	 * Send a notification about an existing share
 	 *
-	 * @NoCSRFRequired
-	 * @PublicPage
-	 * @BruteForceProtection(action=receiveFederatedShareNotification)
+	 * @param string $notificationType Notification type, e.g. SHARE_ACCEPTED
+	 * @param string $resourceType calendar, file, contact,...
+	 * @param string|null $providerId ID of the share
+	 * @param array<string, mixed>|null $notification The actual payload of the notification
 	 *
-	 * @param string $notificationType (notification type, e.g. SHARE_ACCEPTED)
-	 * @param string $resourceType (calendar, file, contact,...)
-	 * @param string $providerId id of the share
-	 * @param array $notification the actual payload of the notification
-	 * @return JSONResponse
+	 * @return JSONResponse<Http::STATUS_CREATED, array<string, mixed>, array{}>|JSONResponse<Http::STATUS_BAD_REQUEST, CloudFederationAPIValidationError, array{}>|JSONResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_IMPLEMENTED, CloudFederationAPIError, array{}>
+	 *
+	 * 201: The notification was successfully received
+	 * 400: Bad request due to invalid parameters, e.g. when `type` is invalid or missing
+	 * 403: Getting resource is not allowed
+	 * 501: The resource type is not supported
 	 */
-	public function receiveNotification($notificationType, $resourceType, $providerId, array $notification) {
-
+	#[NoCSRFRequired]
+	#[PublicPage]
+	#[BruteForceProtection(action: 'receiveFederatedShareNotification')]
+	public function receiveNotification($notificationType, $resourceType, $providerId, ?array $notification) {
 		// check if all required parameters are set
 		if ($notificationType === null ||
 			$resourceType === null ||
@@ -243,9 +239,22 @@ class RequestHandlerController extends Controller {
 			!is_array($notification)
 		) {
 			return new JSONResponse(
-				['message' => 'Missing arguments'],
+				[
+					'message' => 'Missing arguments',
+					'validationErrors' => [],
+				],
 				Http::STATUS_BAD_REQUEST
 			);
+		}
+
+		try {
+			// if request is signed and well signed, no exception are thrown
+			// if request is not signed and host is known for not supporting signed request, no exception are thrown
+			$signedRequest = $this->getSignedRequest();
+			$this->confirmNotificationIdentity($signedRequest, $resourceType, $notification);
+		} catch (IncomingRequestException $e) {
+			$this->logger->warning('incoming request exception', ['exception' => $e]);
+			return new JSONResponse(['message' => $e->getMessage(), 'validationErrors' => []], Http::STATUS_BAD_REQUEST);
 		}
 
 		try {
@@ -253,12 +262,18 @@ class RequestHandlerController extends Controller {
 			$result = $provider->notificationReceived($notificationType, $providerId, $notification);
 		} catch (ProviderDoesNotExistsException $e) {
 			return new JSONResponse(
-				['message' => $e->getMessage()],
+				[
+					'message' => $e->getMessage(),
+					'validationErrors' => [],
+				],
 				Http::STATUS_BAD_REQUEST
 			);
 		} catch (ShareNotFound $e) {
 			$response = new JSONResponse(
-				['message' => $e->getMessage()],
+				[
+					'message' => $e->getMessage(),
+					'validationErrors' => [],
+				],
 				Http::STATUS_BAD_REQUEST
 			);
 			$response->throttle();
@@ -275,13 +290,17 @@ class RequestHandlerController extends Controller {
 			$response->throttle();
 			return $response;
 		} catch (\Exception $e) {
+			$this->logger->warning('incoming notification exception', ['exception' => $e]);
 			return new JSONResponse(
-				['message' => 'Internal error at ' . $this->urlGenerator->getBaseUrl()],
+				[
+					'message' => 'Internal error at ' . $this->urlGenerator->getBaseUrl(),
+					'validationErrors' => [],
+				],
 				Http::STATUS_BAD_REQUEST
 			);
 		}
 
-		return new JSONResponse($result,Http::STATUS_CREATED);
+		return new JSONResponse($result, Http::STATUS_CREATED);
 	}
 
 	/**
@@ -293,7 +312,7 @@ class RequestHandlerController extends Controller {
 	private function mapUid($uid) {
 		// FIXME this should be a method in the user management instead
 		$this->logger->debug('shareWith before, ' . $uid, ['app' => $this->appName]);
-		\OCP\Util::emitHook(
+		Util::emitHook(
 			'\OCA\Files_Sharing\API\Server2Server',
 			'preLoginNameUsedAsUserName',
 			['uid' => &$uid]
@@ -301,5 +320,148 @@ class RequestHandlerController extends Controller {
 		$this->logger->debug('shareWith after, ' . $uid, ['app' => $this->appName]);
 
 		return $uid;
+	}
+
+
+	/**
+	 * returns signed request if available.
+	 * throw an exception:
+	 * - if request is signed, but wrongly signed
+	 * - if request is not signed but instance is configured to only accept signed ocm request
+	 *
+	 * @return IIncomingSignedRequest|null null if remote does not (and never did) support signed request
+	 * @throws IncomingRequestException
+	 */
+	private function getSignedRequest(): ?IIncomingSignedRequest {
+		try {
+			$signedRequest = $this->signatureManager->getIncomingSignedRequest($this->signatoryManager);
+			$this->logger->debug('signed request available', ['signedRequest' => $signedRequest]);
+			return $signedRequest;
+		} catch (SignatureNotFoundException|SignatoryNotFoundException $e) {
+			$this->logger->debug('remote does not support signed request', ['exception' => $e]);
+			// remote does not support signed request.
+			// currently we still accept unsigned request until lazy appconfig
+			// core.enforce_signed_ocm_request is set to true (default: false)
+			if ($this->appConfig->getValueBool('core', OCMSignatoryManager::APPCONFIG_SIGN_ENFORCED, lazy: true)) {
+				$this->logger->notice('ignored unsigned request', ['exception' => $e]);
+				throw new IncomingRequestException('Unsigned request');
+			}
+		} catch (SignatureException $e) {
+			$this->logger->warning('wrongly signed request', ['exception' => $e]);
+			throw new IncomingRequestException('Invalid signature');
+		}
+		return null;
+	}
+
+
+	/**
+	 * confirm that the value related to $key entry from the payload is in format userid@hostname
+	 * and compare hostname with the origin of the signed request.
+	 *
+	 * If request is not signed, we still verify that the hostname from the extracted value does,
+	 * actually, not support signed request
+	 *
+	 * @param IIncomingSignedRequest|null $signedRequest
+	 * @param string $key entry from data available in data
+	 * @param string $value value itself used in case request is not signed
+	 *
+	 * @throws IncomingRequestException
+	 */
+	private function confirmSignedOrigin(?IIncomingSignedRequest $signedRequest, string $key, string $value): void {
+		if ($signedRequest === null) {
+			$instance = $this->getHostFromFederationId($value);
+			try {
+				$this->signatureManager->getSignatory($instance);
+				throw new IncomingRequestException('instance is supposed to sign its request');
+			} catch (SignatoryNotFoundException) {
+				return;
+			}
+		}
+
+		$body = json_decode($signedRequest->getBody(), true) ?? [];
+		$entry = trim($body[$key] ?? '', '@');
+		if ($this->getHostFromFederationId($entry) !== $signedRequest->getOrigin()) {
+			throw new IncomingRequestException('share initiation (' . $signedRequest->getOrigin() . ') from different instance (' . $entry . ') [key=' . $key . ']');
+		}
+	}
+
+	/**
+	 *  confirm identity of the remote instance on notification, based on the share token.
+	 *
+	 *  If request is not signed, we still verify that the hostname from the extracted value does,
+	 *  actually, not support signed request
+	 *
+	 * @param IIncomingSignedRequest|null $signedRequest
+	 * @param string $resourceType
+	 * @param string $sharedSecret
+	 *
+	 * @throws IncomingRequestException
+	 * @throws BadRequestException
+	 */
+	private function confirmNotificationIdentity(
+		?IIncomingSignedRequest $signedRequest,
+		string $resourceType,
+		array $notification,
+	): void {
+		$sharedSecret = $notification['sharedSecret'] ?? '';
+		if ($sharedSecret === '') {
+			throw new BadRequestException(['sharedSecret']);
+		}
+
+		try {
+			$provider = $this->cloudFederationProviderManager->getCloudFederationProvider($resourceType);
+			if ($provider instanceof ISignedCloudFederationProvider) {
+				$identity = $provider->getFederationIdFromSharedSecret($sharedSecret, $notification);
+			} else {
+				$this->logger->debug('cloud federation provider {provider} does not implements ISignedCloudFederationProvider', ['provider' => $provider::class]);
+				return;
+			}
+		} catch (\Exception $e) {
+			throw new IncomingRequestException($e->getMessage());
+		}
+
+		$this->confirmNotificationEntry($signedRequest, $identity);
+	}
+
+
+	/**
+	 * @param IIncomingSignedRequest|null $signedRequest
+	 * @param string $entry
+	 *
+	 * @return void
+	 * @throws IncomingRequestException
+	 */
+	private function confirmNotificationEntry(?IIncomingSignedRequest $signedRequest, string $entry): void {
+		$instance = $this->getHostFromFederationId($entry);
+		if ($signedRequest === null) {
+			try {
+				$this->signatureManager->getSignatory($instance);
+				throw new IncomingRequestException('instance is supposed to sign its request');
+			} catch (SignatoryNotFoundException) {
+				return;
+			}
+		} elseif ($instance !== $signedRequest->getOrigin()) {
+			throw new IncomingRequestException('remote instance ' . $instance . ' not linked to origin ' . $signedRequest->getOrigin());
+		}
+	}
+
+	/**
+	 * @param string $entry
+	 * @return string
+	 * @throws IncomingRequestException
+	 */
+	private function getHostFromFederationId(string $entry): string {
+		if (!str_contains($entry, '@')) {
+			throw new IncomingRequestException('entry ' . $entry . ' does not contains @');
+		}
+		$rightPart = substr($entry, strrpos($entry, '@') + 1);
+
+		// in case the full scheme is sent; getting rid of it
+		$rightPart = $this->addressHandler->removeProtocolFromUrl($rightPart);
+		try {
+			return $this->signatureManager->extractIdentityFromUri('https://' . $rightPart);
+		} catch (IdentityNotFoundException) {
+			throw new IncomingRequestException('invalid host within federation id: ' . $entry);
+		}
 	}
 }

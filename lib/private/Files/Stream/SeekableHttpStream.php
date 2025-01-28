@@ -1,25 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2020, Lukas Stabe (lukas@stabe.de)
- *
- * @author Lukas Stabe <lukas@stabe.de>
- * @author Robin Appelman <robin@icewind.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Files\Stream;
 
@@ -75,8 +57,12 @@ class SeekableHttpStream implements File {
 
 	/** @var ?resource|closed-resource */
 	private $current;
+	/** @var int $offset offset of the current chunk */
 	private int $offset = 0;
+	/** @var int $length length of the current chunk */
 	private int $length = 0;
+	/** @var int $totalSize size of the full stream */
+	private int $totalSize = 0;
 	private bool $needReconnect = false;
 
 	private function reconnect(int $start): bool {
@@ -104,7 +90,7 @@ class SeekableHttpStream implements File {
 					continue 2;
 				}
 			}
-			throw new \Exception("Failed to get source stream from stream wrapper of " . get_class($responseHead));
+			throw new \Exception('Failed to get source stream from stream wrapper of ' . get_class($responseHead));
 		}
 
 		$rangeHeaders = array_values(array_filter($responseHead, function ($v) {
@@ -128,6 +114,9 @@ class SeekableHttpStream implements File {
 
 		$this->offset = $begin;
 		$this->length = $length;
+		if ($start === 0) {
+			$this->totalSize = $length;
+		}
 
 		return true;
 	}
@@ -211,7 +200,11 @@ class SeekableHttpStream implements File {
 
 	public function stream_stat() {
 		if ($this->getCurrent()) {
-			return fstat($this->getCurrent());
+			$stat = fstat($this->getCurrent());
+			if ($stat) {
+				$stat['size'] = $this->totalSize;
+			}
+			return $stat;
 		} else {
 			return false;
 		}

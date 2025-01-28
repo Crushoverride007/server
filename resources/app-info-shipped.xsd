@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
+<!--
+  - SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            elementFormDefault="qualified" attributeFormDefault="unqualified">
 
@@ -340,6 +344,7 @@
             <xs:element name="prelogin" minOccurs="0" maxOccurs="1"/>
             <xs:element name="filesystem" minOccurs="0" maxOccurs="1"/>
             <xs:element name="authentication" minOccurs="0" maxOccurs="1"/>
+            <xs:element name="extended_authentication" minOccurs="0" maxOccurs="1"/>
             <xs:element name="logging" minOccurs="0" maxOccurs="1"/>
             <xs:element name="dav" minOccurs="0" maxOccurs="1"/>
             <xs:element name="prevent_group_restriction" minOccurs="0"
@@ -369,6 +374,15 @@
 
     <xs:simpleType name="licence">
         <xs:restriction base="xs:string">
+            <xs:enumeration value="AGPL-3.0-only"/>
+            <xs:enumeration value="AGPL-3.0-or-later"/>
+            <xs:enumeration value="Apache-2.0"/>
+            <xs:enumeration value="GPL-3.0-only"/>
+            <xs:enumeration value="GPL-3.0-or-later"/>
+            <xs:enumeration value="MIT"/>
+            <xs:enumeration value="MPL-2.0"/>
+
+            <!-- Deprecated -->
             <xs:enumeration value="agpl"/>
             <xs:enumeration value="mpl"/>
             <xs:enumeration value="apache"/>
@@ -446,7 +460,7 @@
         <xs:sequence>
             <xs:element name="id" type="id" minOccurs="0" maxOccurs="1"/>
             <xs:element name="name" type="non-empty-string" minOccurs="1" maxOccurs="1"/>
-            <xs:element name="route" type="route" minOccurs="1" maxOccurs="1"/>
+            <xs:element name="route" type="route" minOccurs="0" maxOccurs="1"/>
             <xs:element name="icon" type="xs:anyURI" minOccurs="0" maxOccurs="1"/>
             <xs:element name="order" type="xs:int" minOccurs="0" maxOccurs="1"/>
             <xs:element name="type" type="navigation-type" minOccurs="0" maxOccurs="1"/>
@@ -569,6 +583,8 @@
             <xs:element name="nextcloud" type="nextcloud" minOccurs="1"
                         maxOccurs="1"/>
             <xs:element name="architecture" type="architecture" minOccurs="0"
+                        maxOccurs="unbounded"/>
+            <xs:element name="backend" type="backend" minOccurs="0"
                         maxOccurs="unbounded"/>
         </xs:sequence>
     </xs:complexType>
@@ -752,4 +768,9 @@
         </xs:restriction>
     </xs:simpleType>
 
+    <xs:simpleType name="backend">
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="caldav"/>
+        </xs:restriction>
+    </xs:simpleType>
 </xs:schema>

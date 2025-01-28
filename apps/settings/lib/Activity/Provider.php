@@ -3,37 +3,17 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2017 Joas Schilling <coding@schilljs.com>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\Settings\Activity;
 
+use OCP\Activity\Exceptions\UnknownActivityException;
 use OCP\Activity\IEvent;
 use OCP\Activity\IManager;
 use OCP\Activity\IProvider;
 use OCP\IL10N;
 use OCP\IURLGenerator;
-use OCP\IUser;
 use OCP\IUserManager;
 use OCP\L10N\IFactory;
 
@@ -51,29 +31,15 @@ class Provider implements IProvider {
 	public const APP_TOKEN_FILESYSTEM_GRANTED = 'app_token_filesystem_granted';
 	public const APP_TOKEN_FILESYSTEM_REVOKED = 'app_token_filesystem_revoked';
 
-	/** @var IFactory */
-	protected $languageFactory;
-
 	/** @var IL10N */
 	protected $l;
 
-	/** @var IURLGenerator */
-	protected $url;
-
-	/** @var IUserManager */
-	protected $userManager;
-
-	/** @var IManager */
-	private $activityManager;
-
-	public function __construct(IFactory $languageFactory,
-								IURLGenerator $url,
-								IUserManager $userManager,
-								IManager $activityManager) {
-		$this->languageFactory = $languageFactory;
-		$this->url = $url;
-		$this->userManager = $userManager;
-		$this->activityManager = $activityManager;
+	public function __construct(
+		protected IFactory $languageFactory,
+		protected IURLGenerator $url,
+		protected IUserManager $userManager,
+		private IManager $activityManager,
+	) {
 	}
 
 	/**
@@ -81,12 +47,12 @@ class Provider implements IProvider {
 	 * @param IEvent $event
 	 * @param IEvent|null $previousEvent
 	 * @return IEvent
-	 * @throws \InvalidArgumentException
+	 * @throws UnknownActivityException
 	 * @since 11.0.0
 	 */
-	public function parse($language, IEvent $event, IEvent $previousEvent = null): IEvent {
+	public function parse($language, IEvent $event, ?IEvent $previousEvent = null): IEvent {
 		if ($event->getApp() !== 'settings') {
-			throw new \InvalidArgumentException('Unknown app');
+			throw new UnknownActivityException('Unknown app');
 		}
 
 		$this->l = $this->languageFactory->get('settings', $language);
@@ -113,9 +79,9 @@ class Provider implements IProvider {
 			$subject = $this->l->t('Your email address was changed by an administrator');
 		} elseif ($event->getSubject() === self::APP_TOKEN_CREATED) {
 			if ($event->getAffectedUser() === $event->getAuthor()) {
-				$subject = $this->l->t('You created app password "{token}"');
+				$subject = $this->l->t('You created an app password for a session named "{token}"');
 			} else {
-				$subject = $this->l->t('An administrator created app password "{token}"');
+				$subject = $this->l->t('An administrator created an app password for a session named "{token}"');
 			}
 		} elseif ($event->getSubject() === self::APP_TOKEN_DELETED) {
 			$subject = $this->l->t('You deleted app password "{token}"');
@@ -126,7 +92,7 @@ class Provider implements IProvider {
 		} elseif ($event->getSubject() === self::APP_TOKEN_FILESYSTEM_REVOKED) {
 			$subject = $this->l->t('You revoked filesystem access from app password "{token}"');
 		} else {
-			throw new \InvalidArgumentException('Unknown subject');
+			throw new UnknownActivityException('Unknown subject');
 		}
 
 		$parsedParameters = $this->getParameters($event);
@@ -138,7 +104,7 @@ class Provider implements IProvider {
 	/**
 	 * @param IEvent $event
 	 * @return array
-	 * @throws \InvalidArgumentException
+	 * @throws UnknownActivityException
 	 */
 	protected function getParameters(IEvent $event): array {
 		$subject = $event->getSubject();
@@ -163,7 +129,7 @@ class Provider implements IProvider {
 				return [
 					'token' => [
 						'type' => 'highlight',
-						'id' => $event->getObjectId(),
+						'id' => (string)$event->getObjectId(),
 						'name' => $parameters['name'],
 					]
 				];
@@ -171,35 +137,22 @@ class Provider implements IProvider {
 				return [
 					'token' => [
 						'type' => 'highlight',
-						'id' => $event->getObjectId(),
+						'id' => (string)$event->getObjectId(),
 						'name' => $parameters['name'],
 					],
 					'newToken' => [
 						'type' => 'highlight',
-						'id' => $event->getObjectId(),
+						'id' => (string)$event->getObjectId(),
 						'name' => $parameters['newName'],
 					]
 				];
 		}
 
-		throw new \InvalidArgumentException('Unknown subject');
+		throw new UnknownActivityException('Unknown subject');
 	}
 
-	/**
-	 * @param IEvent $event
-	 * @param string $subject
-	 * @param array $parameters
-	 * @throws \InvalidArgumentException
-	 */
 	protected function setSubjects(IEvent $event, string $subject, array $parameters): void {
-		$placeholders = $replacements = [];
-		foreach ($parameters as $placeholder => $parameter) {
-			$placeholders[] = '{' . $placeholder . '}';
-			$replacements[] = $parameter['name'];
-		}
-
-		$event->setParsedSubject(str_replace($placeholders, $replacements, $subject))
-			->setRichSubject($subject, $parameters);
+		$event->setRichSubject($subject, $parameters);
 	}
 
 	protected function generateUserParameter(string $uid): array {

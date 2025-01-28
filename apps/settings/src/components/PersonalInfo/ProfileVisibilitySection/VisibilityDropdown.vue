@@ -1,51 +1,33 @@
 <!--
-	- @copyright 2021 Christopher Ng <chrng8@gmail.com>
-	-
-	- @author Christopher Ng <chrng8@gmail.com>
-	-
-	- @license GNU AGPL version 3 or any later version
-	-
-	- This program is free software: you can redistribute it and/or modify
-	- it under the terms of the GNU Affero General Public License as
-	- published by the Free Software Foundation, either version 3 of the
-	- License, or (at your option) any later version.
-	-
-	- This program is distributed in the hope that it will be useful,
-	- but WITHOUT ANY WARRANTY; without even the implied warranty of
-	- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-	- GNU Affero General Public License for more details.
-	-
-	- You should have received a copy of the GNU Affero General Public License
-	- along with this program. If not, see <http://www.gnu.org/licenses/>.
-	-
+  - SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
 <template>
 	<div class="visibility-container"
 		:class="{ disabled }">
 		<label :for="inputId">
-			{{ t('settings', '{displayId}', { displayId }) }}
+			{{ displayId }}
 		</label>
-		<NcMultiselect :id="inputId"
-			class="visibility-container__multiselect"
+		<NcSelect :input-id="inputId"
+			class="visibility-container__select"
+			:clearable="false"
 			:options="visibilityOptions"
-			track-by="name"
-			label="label"
 			:value="visibilityObject"
-			@change="onVisibilityChange" />
+			label-outside
+			@option:selected="onVisibilityChange" />
 	</div>
 </template>
 
 <script>
-import { showError } from '@nextcloud/dialogs'
 import { loadState } from '@nextcloud/initial-state'
 import { subscribe, unsubscribe } from '@nextcloud/event-bus'
 
-import NcMultiselect from '@nextcloud/vue/dist/Components/NcMultiselect'
+import NcSelect from '@nextcloud/vue/dist/Components/NcSelect.js'
 
 import { saveProfileParameterVisibility } from '../../../service/ProfileService.js'
 import { VISIBILITY_PROPERTY_ENUM } from '../../../constants/ProfileConstants.js'
-import logger from '../../../logger.js'
+import { handleError } from '../../../utils/handlers.ts'
 
 const { profileEnabled } = loadState('settings', 'personalInfoParameters', false)
 
@@ -53,7 +35,7 @@ export default {
 	name: 'VisibilityDropdown',
 
 	components: {
-		NcMultiselect,
+		NcSelect,
 	},
 
 	props: {
@@ -137,8 +119,7 @@ export default {
 				// Ensure that local state reflects server state
 				this.initialVisibility = visibility
 			} else {
-				showError(errorMessage)
-				logger.error(errorMessage, error)
+				handleError(error, errorMessage)
 			}
 		},
 
@@ -152,7 +133,7 @@ export default {
 <style lang="scss" scoped>
 .visibility-container {
 	display: flex;
-	width: max-content;
+	flex-wrap: wrap;
 
 	&.disabled {
 		filter: grayscale(1);
@@ -161,7 +142,7 @@ export default {
 		pointer-events: none;
 
 		& *,
-		&::v-deep * {
+		&:deep(*) {
 			cursor: default;
 			pointer-events: none;
 		}
@@ -173,8 +154,8 @@ export default {
 		line-height: 50px;
 	}
 
-	&__multiselect {
-		width: 260px;
+	&__select {
+		width: 270px;
 		max-width: 40vw;
 	}
 }

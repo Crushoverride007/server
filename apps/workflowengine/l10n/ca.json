@@ -44,6 +44,7 @@
     "Nextcloud workflow engine" : "Motor de flux de treball de Nextcloud",
     "Select a filter" : "Seleccioneu un filtre",
     "Select a comparator" : "Seleccioneu un comparador",
+    "Remove filter" : "Suprimeix el filtre",
     "Select a file type" : "Seleccioneu un tipus de fitxer",
     "e.g. httpd/unix-directory" : "p. ex. httpd/unix-directory",
     "Folder" : "Carpeta",
@@ -53,9 +54,7 @@
     "Custom mimetype" : "Tipus mime personalitzat",
     "Please enter a valid time span" : "Introduïu un interval de temps vàlid",
     "Select a request URL" : "Seleccioneu un URL de petició",
-    "Predefined URLs" : "URLs predefinits",
     "Files WebDAV" : "Fitxers WebDAV",
-    "Others" : "Altres",
     "Custom URL" : "URL personalitzat",
     "Select a user agent" : "Seleccioneu un agent d'usuari",
     "Android client" : "Client android",
@@ -63,6 +62,8 @@
     "Desktop client" : "Client d'escriptori",
     "Thunderbird & Outlook addons" : "Complements de Thunderbird i Outlook",
     "Custom user agent" : "Agent d'usuari personalitzat",
+    "Select groups" : "Selecciona els grups",
+    "Groups" : "Grups",
     "At least one event must be selected" : "Com a mínim s'ha de seleccionar un esdeveniment",
     "Add new flow" : "Afegeix un flux nou",
     "When" : "Quan",
@@ -104,12 +105,7 @@
     "between" : "entre",
     "not between" : "no entre",
     "Request user agent" : "Sol·licita agent d'usuari",
-    "User group membership" : "Pertinença a grup d'usuaris",
     "is member of" : "és membre de",
-    "is not member of" : "no és membre de",
-    "Select a tag" : "Seleccioneu una etiqueta",
-    "No results" : "No hi ha resultats",
-    "%s (invisible)" : "%s (invisible)",
-    "%s (restricted)" : "%s (restringit)"
+    "is not member of" : "no és membre de"
 },"pluralForm" :"nplurals=2; plural=(n != 1);"
 }

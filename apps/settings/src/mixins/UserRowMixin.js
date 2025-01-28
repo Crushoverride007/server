@@ -1,28 +1,10 @@
 /**
- * @copyright Copyright (c) 2019 John Molakvoæ <skjnldsv@protonmail.com>
- *
- * @author Greta Doci <gretadoci@gmail.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0-or-later
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { generateUrl } from '@nextcloud/router'
+import { formatFileSize } from '@nextcloud/files'
+import { useFormatDateTime } from '@nextcloud/vue'
 
 export default {
 	props: {
@@ -46,10 +28,6 @@ export default {
 			type: Array,
 			default: () => [],
 		},
-		showConfig: {
-			type: Object,
-			default: () => ({}),
-		},
 		languages: {
 			type: Array,
 			required: true,
@@ -59,7 +37,23 @@ export default {
 			default: () => [],
 		},
 	},
+	setup(props) {
+		const { formattedFullTime } = useFormatDateTime(props.user.firstLoginTimestamp * 1000, {
+			relativeTime: false,
+			format: {
+				timeStyle: 'short',
+				dateStyle: 'short',
+			},
+		})
+		return {
+			formattedFullTime,
+		}
+	},
 	computed: {
+		showConfig() {
+			return this.$store.getters.getShowConfig
+		},
+
 		/* GROUPS MANAGEMENT */
 		userGroups() {
 			const userGroups = this.groups.filter(group => this.user.groups.includes(group.id))
@@ -89,11 +83,10 @@ export default {
 
 		/* QUOTA MANAGEMENT */
 		usedSpace() {
-			if (this.user.quota.used) {
-				return t('settings', '{size} used', { size: OC.Util.humanFileSize(this.user.quota.used) })
-			}
-			return t('settings', '{size} used', { size: OC.Util.humanFileSize(0) })
+			const quotaUsed = this.user.quota.used > 0 ? this.user.quota.used : 0
+			return t('settings', '{size} used', { size: formatFileSize(quotaUsed, true) })
 		},
+
 		usedQuota() {
 			let quota = this.user.quota.quota
 			if (quota > 0) {
@@ -105,11 +98,12 @@ export default {
 			}
 			return isNaN(quota) ? 0 : quota
 		},
+
 		// Mapping saved values to objects
 		userQuota() {
 			if (this.user.quota.quota >= 0) {
 				// if value is valid, let's map the quotaOptions or return custom quota
-				const humanQuota = OC.Util.humanFileSize(this.user.quota.quota)
+				const humanQuota = formatFileSize(this.user.quota.quota)
 				const userQuota = this.quotaOptions.find(quota => quota.id === humanQuota)
 				return userQuota || { id: humanQuota, label: humanQuota }
 			} else if (this.user.quota.quota === 'default') {
@@ -139,46 +133,28 @@ export default {
 			return userLang
 		},
 
+		userFirstLogin() {
+			if (this.user.firstLoginTimestamp > 0) {
+				return this.formattedFullTime
+			}
+			if (this.user.firstLoginTimestamp < 0) {
+				return t('settings', 'Unknown')
+			}
+			return t('settings', 'Never')
+		},
+
 		/* LAST LOGIN */
 		userLastLoginTooltip() {
-			if (this.user.lastLogin > 0) {
-				return OC.Util.formatDate(this.user.lastLogin)
+			if (this.user.lastLoginTimestamp > 0) {
+				return OC.Util.formatDate(this.user.lastLoginTimestamp * 1000)
 			}
 			return ''
 		},
 		userLastLogin() {
-			if (this.user.lastLogin > 0) {
-				return OC.Util.relativeModifiedDate(this.user.lastLogin)
+			if (this.user.lastLoginTimestamp > 0) {
+				return OC.Util.relativeModifiedDate(this.user.lastLoginTimestamp * 1000)
 			}
 			return t('settings', 'Never')
-		},
-	},
-	methods: {
-		/**
-		 * Generate avatar url
-		 *
-		 * @param {string} user The user name
-		 * @param {bool} isDarkTheme Whether the avatar should be the dark version
-		 * @return {string}
-		 */
-		generateAvatar(user, isDarkTheme) {
-			if (isDarkTheme) {
-				return generateUrl(
-					'/avatar/{user}/64/dark?v={version}',
-					{
-						user,
-						version: oc_userconfig.avatar.version,
-					}
-				)
-			} else {
-				return generateUrl(
-					'/avatar/{user}/64?v={version}',
-					{
-						user,
-						version: oc_userconfig.avatar.version,
-					}
-				)
-			}
 		},
 	},
 }

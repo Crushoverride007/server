@@ -1,41 +1,19 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Alexander A. Klimov <grandmaster@al2klimov.de>
- * @author Daniel Schneider <daniel@schneidoa.de>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Olivier Paroz <github@oparoz.com>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Preview;
 
 use OCP\Files\File;
 use OCP\Files\FileInfo;
 use OCP\IImage;
+use OCP\Server;
 use Psr\Log\LoggerInterface;
 
 class Movie extends ProviderV2 {
-
 	/**
 	 * @deprecated 23.0.0 pass option to \OCP\Preview\ProviderV2
 	 * @var string
@@ -98,6 +76,13 @@ class Movie extends ProviderV2 {
 
 		foreach ($sizeAttempts as $size) {
 			$absPath = $this->getLocalFile($file, $size);
+			if ($absPath === false) {
+				Server::get(LoggerInterface::class)->error(
+					'Failed to get local file to generate thumbnail for: ' . $file->getPath(),
+					['app' => 'core']
+				);
+				return null;
+			}
 
 			$result = null;
 			if (is_string($absPath)) {
@@ -126,23 +111,30 @@ class Movie extends ProviderV2 {
 		$binaryType = substr(strrchr($this->binary, '/'), 1);
 
 		if ($binaryType === 'avconv') {
-			$cmd = $this->binary . ' -y -ss ' . escapeshellarg((string)$second) .
-				' -i ' . escapeshellarg($absPath) .
-				' -an -f mjpeg -vframes 1 -vsync 1 ' . escapeshellarg($tmpPath) .
-				' 2>&1';
+			$cmd = [$this->binary, '-y', '-ss', (string)$second,
+				'-i', $absPath,
+				'-an', '-f', 'mjpeg', '-vframes', '1', '-vsync', '1',
+				$tmpPath];
 		} elseif ($binaryType === 'ffmpeg') {
-			$cmd = $this->binary . ' -y -ss ' . escapeshellarg((string)$second) .
-				' -i ' . escapeshellarg($absPath) .
-				' -f mjpeg -vframes 1' .
-				' ' . escapeshellarg($tmpPath) .
-				' 2>&1';
+			$cmd = [$this->binary, '-y', '-ss', (string)$second,
+				'-i', $absPath,
+				'-f', 'mjpeg', '-vframes', '1',
+				$tmpPath];
 		} else {
 			// Not supported
 			unlink($tmpPath);
 			return null;
 		}
 
-		exec($cmd, $output, $returnCode);
+		$proc = proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+		$returnCode = -1;
+		$output = '';
+		if (is_resource($proc)) {
+			$stdout = trim(stream_get_contents($pipes[1]));
+			$stderr = trim(stream_get_contents($pipes[2]));
+			$returnCode = proc_close($proc);
+			$output = $stdout . $stderr;
+		}
 
 		if ($returnCode === 0) {
 			$image = new \OCP\Image();
@@ -157,7 +149,7 @@ class Movie extends ProviderV2 {
 
 		if ($second === 0) {
 			$logger = \OC::$server->get(LoggerInterface::class);
-			$logger->error('Movie preview generation failed Output: {output}', ['app' => 'core', 'output' => $output]);
+			$logger->info('Movie preview generation failed Output: {output}', ['app' => 'core', 'output' => $output]);
 		}
 
 		unlink($tmpPath);

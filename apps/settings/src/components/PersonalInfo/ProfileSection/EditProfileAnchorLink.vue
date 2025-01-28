@@ -1,23 +1,6 @@
 <!--
-	- @copyright 2021 Christopher Ng <chrng8@gmail.com>
-	-
-	- @author Christopher Ng <chrng8@gmail.com>
-	-
-	- @license GNU AGPL version 3 or any later version
-	-
-	- This program is free software: you can redistribute it and/or modify
-	- it under the terms of the GNU Affero General Public License as
-	- published by the Free Software Foundation, either version 3 of the
-	- License, or (at your option) any later version.
-	-
-	- This program is distributed in the hope that it will be useful,
-	- but WITHOUT ANY WARRANTY; without even the implied warranty of
-	- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-	- GNU Affero General Public License for more details.
-	-
-	- You should have received a copy of the GNU Affero General Public License
-	- along with this program. If not, see <http://www.gnu.org/licenses/>.
-	-
+  - SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 
 <template>
@@ -31,7 +14,7 @@
 </template>
 
 <script>
-import ChevronDownIcon from 'vue-material-design-icons/ChevronDown'
+import ChevronDownIcon from 'vue-material-design-icons/ChevronDown.vue'
 
 export default {
 	name: 'EditProfileAnchorLink',
@@ -69,26 +52,28 @@ html {
 a {
 	display: block;
 	height: 44px;
-	width: 290px;
+	width: min(100%, 290px);
+	overflow: hidden;
+	text-overflow: ellipsis;
 	line-height: 44px;
 	padding: 0 16px;
 	margin: 14px auto;
 	border-radius: var(--border-radius-pill);
-	opacity: 0.4;
+	color: var(--color-text-maxcontrast);
 	background-color: transparent;
 
 	.anchor-icon {
 		display: inline-block;
 		vertical-align: middle;
 		margin-top: 6px;
-		margin-right: 8px;
+		margin-inline-end: 8px;
 	}
 
 	&:hover,
 	&:focus,
 	&:active {
-		opacity: 0.8;
-		background-color: rgba(127, 127, 127, .25);
+		color: var(--color-main-text);
+		background-color: var(--color-background-dark);
 	}
 
 	&.disabled {

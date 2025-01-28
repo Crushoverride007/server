@@ -1,37 +1,22 @@
 <?php
 /**
- * @author Björn Schießle <schiessle@owncloud.com>
- *
- * @copyright Copyright (c) 2015, ownCloud, Inc.
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2017-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace Test\Encryption;
 
+use OC\Encryption\File;
 use OC\Encryption\Update;
 use OC\Encryption\Util;
 use OC\Files\Mount\Manager;
 use OC\Files\View;
+use OCP\Encryption\IEncryptionModule;
 use Psr\Log\LoggerInterface;
 use Test\TestCase;
-use OC\Encryption\File;
-use OCP\Encryption\IEncryptionModule;
 
 class UpdateTest extends TestCase {
-
 	/** @var \OC\Encryption\Update */
 	private $update;
 
@@ -90,7 +75,7 @@ class UpdateTest extends TestCase {
 	 * @param array $allFiles
 	 * @param integer $numberOfFiles
 	 */
-	public function testUpdate($path, $isDir, $allFiles, $numberOfFiles) {
+	public function testUpdate($path, $isDir, $allFiles, $numberOfFiles): void {
 		$this->encryptionManager->expects($this->once())
 			->method('getEncryptionModule')
 			->willReturn($this->encryptionModule);
@@ -135,7 +120,7 @@ class UpdateTest extends TestCase {
 	 * @param string $target
 	 * @param boolean $encryptionEnabled
 	 */
-	public function testPostRename($source, $target, $encryptionEnabled) {
+	public function testPostRename($source, $target, $encryptionEnabled): void {
 		$updateMock = $this->getUpdateMock(['update', 'getOwnerPath']);
 
 		$this->encryptionManager->expects($this->once())
@@ -183,7 +168,7 @@ class UpdateTest extends TestCase {
 	 *
 	 * @param boolean $encryptionEnabled
 	 */
-	public function testPostRestore($encryptionEnabled) {
+	public function testPostRestore($encryptionEnabled): void {
 		$updateMock = $this->getUpdateMock(['update']);
 
 		$this->encryptionManager->expects($this->once())
@@ -214,7 +199,7 @@ class UpdateTest extends TestCase {
 	/**
 	 * create mock of the update method
 	 *
-	 * @param array$methods methods which should be set
+	 * @param array $methods methods which should be set
 	 * @return \OC\Encryption\Update | \PHPUnit\Framework\MockObject\MockObject
 	 */
 	protected function getUpdateMock($methods) {
