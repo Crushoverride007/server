@@ -1,10 +1,9 @@
 /* global OC, result, _ */
 
 /**
- * Copyright (c) 2016, Christoph Wurst <christoph@owncloud.com>
- *
- * This file is licensed under the Affero General Public License version 3 or later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 (function(_, $, OC) {
@@ -82,7 +81,7 @@
 			];
 
 			_.each(this._inputFields, function(field) {
-				var $icon = self.$('#' + field + 'form h3 > .federation-menu');
+				var $icon = self.$('#' + field + 'form .headerbar-label > .federation-menu');
 				var excludedScopes = []
 
 				if (fieldsWithV2Private.indexOf(field) === -1) {
@@ -245,7 +244,7 @@
 		},
 
 		_setFieldScopeIcon: function(field, scope) {
-			var $icon = this.$('#' + field + 'form > h3 .icon-federation-menu');
+			var $icon = this.$('#' + field + 'form > .headerbar-label .icon-federation-menu');
 
 			$icon.removeClass('icon-phone');
 			$icon.removeClass('icon-password');

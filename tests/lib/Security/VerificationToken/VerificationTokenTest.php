@@ -3,25 +3,8 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2021 Arthur Schiwon <blizzz@arthur-schiwon.de>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\Security\VerificationToken;
@@ -34,19 +17,22 @@ use OCP\IUser;
 use OCP\Security\ICrypto;
 use OCP\Security\ISecureRandom;
 use OCP\Security\VerificationToken\InvalidTokenException;
+use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
 
 class VerificationTokenTest extends TestCase {
 	/** @var VerificationToken */
 	protected $token;
-	/** @var IConfig|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var IConfig|MockObject */
 	protected $config;
-	/** @var ISecureRandom|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var ISecureRandom|MockObject */
 	protected $secureRandom;
-	/** @var ICrypto|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var ICrypto|MockObject */
 	protected $crypto;
-	/** @var ITimeFactory|\PHPUnit\Framework\MockObject\MockObject */
+	/** @var ITimeFactory|MockObject */
 	protected $timeFactory;
+	/** @var IJobList|MockObject */
+	protected $jobList;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -66,13 +52,13 @@ class VerificationTokenTest extends TestCase {
 		);
 	}
 
-	public function testTokenUserUnknown() {
+	public function testTokenUserUnknown(): void {
 		$this->expectException(InvalidTokenException::class);
 		$this->expectExceptionCode(InvalidTokenException::USER_UNKNOWN);
 		$this->token->check('encryptedToken', null, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenUserUnknown2() {
+	public function testTokenUserUnknown2(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -83,7 +69,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenNotFound() {
+	public function testTokenNotFound(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -99,7 +85,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenDecryptionError() {
+	public function testTokenDecryptionError(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -113,7 +99,7 @@ class VerificationTokenTest extends TestCase {
 			->with('alice', 'core', 'fingerprintToken', null)
 			->willReturn('encryptedToken');
 		$this->config->expects($this->any())
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->with('secret')
 			->willReturn('357111317');
 
@@ -126,7 +112,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenInvalidFormat() {
+	public function testTokenInvalidFormat(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -140,7 +126,7 @@ class VerificationTokenTest extends TestCase {
 			->with('alice', 'core', 'fingerprintToken', null)
 			->willReturn('encryptedToken');
 		$this->config->expects($this->any())
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->with('secret')
 			->willReturn('357111317');
 
@@ -153,7 +139,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenExpired() {
+	public function testTokenExpired(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -170,7 +156,7 @@ class VerificationTokenTest extends TestCase {
 			->with('alice', 'core', 'fingerprintToken', null)
 			->willReturn('encryptedToken');
 		$this->config->expects($this->any())
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->with('secret')
 			->willReturn('357111317');
 
@@ -187,7 +173,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenExpiredByLogin() {
+	public function testTokenExpiredByLogin(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -204,7 +190,7 @@ class VerificationTokenTest extends TestCase {
 			->with('alice', 'core', 'fingerprintToken', null)
 			->willReturn('encryptedToken');
 		$this->config->expects($this->any())
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->with('secret')
 			->willReturn('357111317');
 
@@ -221,7 +207,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar', true);
 	}
 
-	public function testTokenMismatch() {
+	public function testTokenMismatch(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -238,7 +224,7 @@ class VerificationTokenTest extends TestCase {
 			->with('alice', 'core', 'fingerprintToken', null)
 			->willReturn('encryptedToken');
 		$this->config->expects($this->any())
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->with('secret')
 			->willReturn('357111317');
 
@@ -255,7 +241,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('encryptedToken', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testTokenSuccess() {
+	public function testTokenSuccess(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->atLeastOnce())
 			->method('isEnabled')
@@ -272,7 +258,7 @@ class VerificationTokenTest extends TestCase {
 			->with('alice', 'core', 'fingerprintToken', null)
 			->willReturn('encryptedToken');
 		$this->config->expects($this->any())
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->with('secret')
 			->willReturn('357111317');
 
@@ -287,7 +273,7 @@ class VerificationTokenTest extends TestCase {
 		$this->token->check('barfoo', $user, 'fingerprintToken', 'foobar');
 	}
 
-	public function testCreate() {
+	public function testCreate(): void {
 		$user = $this->createMock(IUser::class);
 		$user->expects($this->any())
 			->method('getUID')

@@ -1,28 +1,10 @@
 <?php
 
 declare(strict_types=1);
-
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC;
 
@@ -139,10 +121,13 @@ class ServerContainer extends SimpleContainer {
 	public function query(string $name, bool $autoload = true) {
 		$name = $this->sanitizeName($name);
 
-		try {
-			return parent::query($name, false);
-		} catch (QueryException $e) {
-			// Continue with general autoloading then
+		if (str_starts_with($name, 'OCA\\')) {
+			// Skip server container query for app namespace classes
+			try {
+				return parent::query($name, false);
+			} catch (QueryException $e) {
+				// Continue with general autoloading then
+			}
 		}
 
 		// In case the service starts with OCA\ we try to find the service in
@@ -151,10 +136,12 @@ class ServerContainer extends SimpleContainer {
 			try {
 				return $appContainer->queryNoFallback($name);
 			} catch (QueryException $e) {
-				// Didn't find the service or the respective app container,
-				// ignore it and fall back to the core container.
+				// Didn't find the service or the respective app container
+				// In this case the service won't be part of the core container,
+				// so we can throw directly
+				throw $e;
 			}
-		} elseif (strpos($name, 'OC\\Settings\\') === 0 && substr_count($name, '\\') >= 3) {
+		} elseif (str_starts_with($name, 'OC\\Settings\\') && substr_count($name, '\\') >= 3) {
 			$segments = explode('\\', $name);
 			try {
 				$appContainer = $this->getAppContainer(strtolower($segments[1]), $segments[1]);
@@ -174,7 +161,7 @@ class ServerContainer extends SimpleContainer {
 	 * @return DIContainer|null
 	 */
 	public function getAppContainerForService(string $id): ?DIContainer {
-		if (strpos($id, 'OCA\\') !== 0 || substr_count($id, '\\') < 2) {
+		if (!str_starts_with($id, 'OCA\\') || substr_count($id, '\\') < 2) {
 			return null;
 		}
 

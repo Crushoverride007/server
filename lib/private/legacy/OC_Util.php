@@ -1,78 +1,21 @@
 <?php
-/**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Bernhard Posselt <dev@bernhard-posselt.com>
- * @author Birk Borkason <daniel.niccoli@gmail.com>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Brice Maron <brice@bmaron.net>
- * @author Christopher Schäpers <kondou@ts.unde.re>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Clark Tomlinson <fallen013@gmail.com>
- * @author cmeh <cmeh@users.noreply.github.com>
- * @author Eric Masseran <rico.masseran@gmail.com>
- * @author Felix Epp <work@felixepp.de>
- * @author Florin Peter <github@florin-peter.de>
- * @author Frank Karlitschek <frank@karlitschek.de>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author helix84 <helix84@centrum.sk>
- * @author Ilja Neumann <ineumann@owncloud.com>
- * @author Individual IT Services <info@individual-it.net>
- * @author Jakob Sack <mail@jakobsack.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Kawohl <john@owncloud.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Markus Goetz <markus@woboq.com>
- * @author Martin Mattel <martin.mattel@diemattels.at>
- * @author Marvin Thomas Rabe <mrabe@marvinrabe.de>
- * @author Michael Gapczynski <GapczynskiM@gmail.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author rakekniven <mark.ziegler@rakekniven.de>
- * @author Robert Dailey <rcdailey@gmail.com>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Sebastian Wessalowski <sebastian@wessalowski.org>
- * @author Stefan Rado <owncloud@sradonia.net>
- * @author Stefan Weil <sw@weilnetz.de>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Thomas Tanghus <thomas@tanghus.net>
- * @author Valdnet <47037905+Valdnet@users.noreply.github.com>
- * @author Victor Dubiniuk <dubiniuk@owncloud.com>
- * @author Vincent Petry <vincent@nextcloud.com>
- * @author Volkan Gezer <volkangezer@gmail.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
- */
 
+/**
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
 use bantu\IniGetWrapper\IniGetWrapper;
-use OC\AppFramework\Http\Request;
+use OC\Authentication\TwoFactorAuth\Manager as TwoFactorAuthManager;
 use OC\Files\SetupManager;
 use OCP\Files\Template\ITemplateManager;
+use OCP\Http\Client\IClientService;
 use OCP\IConfig;
-use OCP\IDBConnection;
 use OCP\IGroupManager;
 use OCP\IURLGenerator;
 use OCP\IUser;
+use OCP\L10N\IFactory;
+use OCP\Security\ISecureRandom;
 use OCP\Share\IManager;
 use Psr\Log\LoggerInterface;
 
@@ -146,7 +89,7 @@ class OC_Util {
 	/**
 	 * check if share API enforces a default expire date
 	 *
-	 * @return boolean
+	 * @return bool
 	 * @suppress PhanDeprecatedFunction
 	 */
 	public static function isDefaultExpireDateEnforced() {
@@ -159,7 +102,7 @@ class OC_Util {
 	 * Get the quota of a user
 	 *
 	 * @param IUser|null $user
-	 * @return int|\OCP\Files\FileInfo::SPACE_UNLIMITED|false Quota bytes
+	 * @return int|\OCP\Files\FileInfo::SPACE_UNLIMITED|false|float Quota bytes
 	 */
 	public static function getUserQuota(?IUser $user) {
 		if (is_null($user)) {
@@ -185,8 +128,8 @@ class OC_Util {
 		/** @var LoggerInterface $logger */
 		$logger = \OC::$server->get(LoggerInterface::class);
 
-		$plainSkeletonDirectory = \OC::$server->getConfig()->getSystemValue('skeletondirectory', \OC::$SERVERROOT . '/core/skeleton');
-		$userLang = \OC::$server->getL10NFactory()->findLanguage();
+		$plainSkeletonDirectory = \OC::$server->getConfig()->getSystemValueString('skeletondirectory', \OC::$SERVERROOT . '/core/skeleton');
+		$userLang = \OC::$server->get(IFactory::class)->findLanguage();
 		$skeletonDirectory = str_replace('{lang}', $userLang, $plainSkeletonDirectory);
 
 		if (!file_exists($skeletonDirectory)) {
@@ -213,7 +156,7 @@ class OC_Util {
 		}
 
 		if (!empty($skeletonDirectory)) {
-			$logger->debug('copying skeleton for '.$userId.' from '.$skeletonDirectory.' to '.$userDirectory->getFullPath('/'), ['app' => 'files_skeleton']);
+			$logger->debug('copying skeleton for ' . $userId . ' from ' . $skeletonDirectory . ' to ' . $userDirectory->getFullPath('/'), ['app' => 'files_skeleton']);
 			self::copyr($skeletonDirectory, $userDirectory);
 			// update the file cache
 			$userDirectory->getStorage()->getScanner()->scan('', \OC\Files\Cache\Scanner::SCAN_RECURSIVE);
@@ -232,7 +175,7 @@ class OC_Util {
 	 * @return void
 	 */
 	public static function copyr($source, \OCP\Files\Folder $target) {
-		$logger = \OC::$server->getLogger();
+		$logger = \OCP\Server::get(LoggerInterface::class);
 
 		// Verify if folder exists
 		$dir = opendir($source);
@@ -255,7 +198,7 @@ class OC_Util {
 						closedir($dir);
 						return;
 					}
-					stream_copy_to_stream($sourceStream, $child->fopen('w'));
+					$child->putContent($sourceStream);
 				}
 			}
 		}
@@ -273,76 +216,6 @@ class OC_Util {
 	}
 
 	/**
-	 * get the current installed version of ownCloud
-	 *
-	 * @return array
-	 */
-	public static function getVersion() {
-		OC_Util::loadVersion();
-		return self::$versionCache['OC_Version'];
-	}
-
-	/**
-	 * get the current installed version string of ownCloud
-	 *
-	 * @return string
-	 */
-	public static function getVersionString() {
-		OC_Util::loadVersion();
-		return self::$versionCache['OC_VersionString'];
-	}
-
-	/**
-	 * @deprecated the value is of no use anymore
-	 * @return string
-	 */
-	public static function getEditionString() {
-		return '';
-	}
-
-	/**
-	 * @description get the update channel of the current installed of ownCloud.
-	 * @return string
-	 */
-	public static function getChannel() {
-		OC_Util::loadVersion();
-		return \OC::$server->getConfig()->getSystemValue('updater.release.channel', self::$versionCache['OC_Channel']);
-	}
-
-	/**
-	 * @description get the build number of the current installed of ownCloud.
-	 * @return string
-	 */
-	public static function getBuild() {
-		OC_Util::loadVersion();
-		return self::$versionCache['OC_Build'];
-	}
-
-	/**
-	 * @description load the version.php into the session as cache
-	 * @suppress PhanUndeclaredVariable
-	 */
-	private static function loadVersion() {
-		if (self::$versionCache !== null) {
-			return;
-		}
-
-		$timestamp = filemtime(OC::$SERVERROOT . '/version.php');
-		require OC::$SERVERROOT . '/version.php';
-		/** @var int $timestamp */
-		self::$versionCache['OC_Version_Timestamp'] = $timestamp;
-		/** @var string $OC_Version */
-		self::$versionCache['OC_Version'] = $OC_Version;
-		/** @var string $OC_VersionString */
-		self::$versionCache['OC_VersionString'] = $OC_VersionString;
-		/** @var string $OC_Build */
-		self::$versionCache['OC_Build'] = $OC_Build;
-
-		/** @var string $OC_Channel */
-		self::$versionCache['OC_Channel'] = $OC_Channel;
-	}
-
-	/**
 	 * generates a path for JS/CSS files. If no application is provided it will create the path for core.
 	 *
 	 * @param string $application application to get the files from
@@ -353,7 +226,7 @@ class OC_Util {
 	private static function generatePath($application, $directory, $file) {
 		if (is_null($file)) {
 			$file = $application;
-			$application = "";
+			$application = '';
 		}
 		if (!empty($application)) {
 			return "$application/$directory/$file";
@@ -379,7 +252,7 @@ class OC_Util {
 		if ($application !== 'core' && $file !== null) {
 			self::addTranslations($application);
 		}
-		self::addExternalResource($application, $prepend, $path, "script");
+		self::addExternalResource($application, $prepend, $path, 'script');
 	}
 
 	/**
@@ -392,7 +265,7 @@ class OC_Util {
 	 */
 	public static function addVendorScript($application, $file = null, $prepend = false) {
 		$path = OC_Util::generatePath($application, 'vendor', $file);
-		self::addExternalResource($application, $prepend, $path, "script");
+		self::addExternalResource($application, $prepend, $path, 'script');
 	}
 
 	/**
@@ -406,14 +279,14 @@ class OC_Util {
 	 */
 	public static function addTranslations($application, $languageCode = null, $prepend = false) {
 		if (is_null($languageCode)) {
-			$languageCode = \OC::$server->getL10NFactory()->findLanguage($application);
+			$languageCode = \OC::$server->get(IFactory::class)->findLanguage($application);
 		}
 		if (!empty($application)) {
 			$path = "$application/l10n/$languageCode";
 		} else {
 			$path = "l10n/$languageCode";
 		}
-		self::addExternalResource($application, $prepend, $path, "script");
+		self::addExternalResource($application, $prepend, $path, 'script');
 	}
 
 	/**
@@ -426,7 +299,7 @@ class OC_Util {
 	 */
 	public static function addStyle($application, $file = null, $prepend = false) {
 		$path = OC_Util::generatePath($application, 'css', $file);
-		self::addExternalResource($application, $prepend, $path, "style");
+		self::addExternalResource($application, $prepend, $path, 'style');
 	}
 
 	/**
@@ -439,7 +312,7 @@ class OC_Util {
 	 */
 	public static function addVendorStyle($application, $file = null, $prepend = false) {
 		$path = OC_Util::generatePath($application, 'vendor', $file);
-		self::addExternalResource($application, $prepend, $path, "style");
+		self::addExternalResource($application, $prepend, $path, 'style');
 	}
 
 	/**
@@ -451,8 +324,8 @@ class OC_Util {
 	 * @param string $type (script or style)
 	 * @return void
 	 */
-	private static function addExternalResource($application, $prepend, $path, $type = "script") {
-		if ($type === "style") {
+	private static function addExternalResource($application, $prepend, $path, $type = 'script') {
+		if ($type === 'style') {
 			if (!in_array($path, self::$styles)) {
 				if ($prepend === true) {
 					array_unshift(self::$styles, $path);
@@ -460,7 +333,7 @@ class OC_Util {
 					self::$styles[] = $path;
 				}
 			}
-		} elseif ($type === "script") {
+		} elseif ($type === 'script') {
 			if (!in_array($path, self::$scripts)) {
 				if ($prepend === true) {
 					array_unshift(self::$scripts, $path);
@@ -515,15 +388,7 @@ class OC_Util {
 		}
 
 		$webServerRestart = false;
-		$setup = new \OC\Setup(
-			$config,
-			\OC::$server->get(IniGetWrapper::class),
-			\OC::$server->getL10N('lib'),
-			\OC::$server->get(\OCP\Defaults::class),
-			\OC::$server->get(LoggerInterface::class),
-			\OC::$server->getSecureRandom(),
-			\OC::$server->get(\OC\Installer::class)
-		);
+		$setup = \OCP\Server::get(\OC\Setup::class);
 
 		$urlGenerator = \OC::$server->getURLGenerator();
 
@@ -544,7 +409,7 @@ class OC_Util {
 					'hint' => $l->t('This can usually be fixed by giving the web server write access to the config directory. See %s',
 						[ $urlGenerator->linkToDocs('admin-dir_permissions') ]) . '. '
 						. $l->t('Or, if you prefer to keep config.php file read only, set the option "config_is_read_only" to true in it. See %s',
-						[ $urlGenerator->linkToDocs('admin-config') ])
+							[ $urlGenerator->linkToDocs('admin-config') ])
 				];
 			}
 		}
@@ -610,8 +475,7 @@ class OC_Util {
 		// defined = defined
 		// ini = ini_get
 		// If the dependency is not found the missing module name is shown to the EndUser
-		// When adding new checks always verify that they pass on Travis as well
-		// for ini settings, see https://github.com/owncloud/administration/blob/master/travis-ci/custom.ini
+		// When adding new checks always verify that they pass on CI as well
 		$dependencies = [
 			'classes' => [
 				'ZipArchive' => 'zip',
@@ -694,20 +558,6 @@ class OC_Util {
 			];
 		}
 
-		if (function_exists('xml_parser_create') &&
-			LIBXML_LOADED_VERSION < 20700) {
-			$version = LIBXML_LOADED_VERSION;
-			$major = floor($version / 10000);
-			$version -= ($major * 10000);
-			$minor = floor($version / 100);
-			$version -= ($minor * 100);
-			$patch = $version;
-			$errors[] = [
-				'error' => $l->t('libxml2 2.7.0 is at least required. Currently %s is installed.', [$major . '.' . $minor . '.' . $patch]),
-				'hint' => $l->t('To fix this issue update your libxml2 version and restart your web server.')
-			];
-		}
-
 		if (!self::isAnnotationsWorking()) {
 			$errors[] = [
 				'error' => $l->t('PHP is apparently set up to strip inline doc blocks. This will make several core apps inaccessible.'),
@@ -731,48 +581,9 @@ class OC_Util {
 			}
 		}
 
-		$errors = array_merge($errors, self::checkDatabaseVersion());
-
 		// Cache the result of this function
 		\OC::$server->getSession()->set('checkServer_succeeded', count($errors) == 0);
 
-		return $errors;
-	}
-
-	/**
-	 * Check the database version
-	 *
-	 * @return array errors array
-	 */
-	public static function checkDatabaseVersion() {
-		$l = \OC::$server->getL10N('lib');
-		$errors = [];
-		$dbType = \OC::$server->getSystemConfig()->getValue('dbtype', 'sqlite');
-		if ($dbType === 'pgsql') {
-			// check PostgreSQL version
-			// TODO latest postgresql 8 released was 8 years ago, maybe remove the
-			// check completely?
-			try {
-				/** @var IDBConnection $connection */
-				$connection = \OC::$server->get(IDBConnection::class);
-				$result = $connection->executeQuery('SHOW SERVER_VERSION');
-				$data = $result->fetch();
-				$result->closeCursor();
-				if (isset($data['server_version'])) {
-					$version = $data['server_version'];
-					if (version_compare($version, '9.0.0', '<')) {
-						$errors[] = [
-							'error' => $l->t('PostgreSQL >= 9 required.'),
-							'hint' => $l->t('Please upgrade your database version.')
-						];
-					}
-				}
-			} catch (\Doctrine\DBAL\Exception $e) {
-				$logger = \OC::$server->getLogger();
-				$logger->warning('Error occurred while checking PostgreSQL version, assuming >= 9');
-				$logger->logException($e);
-			}
-		}
 		return $errors;
 	}
 
@@ -783,7 +594,7 @@ class OC_Util {
 	 * @return array arrays with error messages and hints
 	 */
 	public static function checkDataDirectoryPermissions($dataDirectory) {
-		if (\OC::$server->getConfig()->getSystemValue('check_data_directory_permissions', true) === false) {
+		if (!\OC::$server->getConfig()->getSystemValueBool('check_data_directory_permissions', true)) {
 			return  [];
 		}
 
@@ -795,8 +606,8 @@ class OC_Util {
 			if ($perms[2] !== '0') {
 				$l = \OC::$server->getL10N('lib');
 				return [[
-					'error' => $l->t('Your data directory is readable by other users.'),
-					'hint' => $l->t('Please change the permissions to 0770 so that the directory cannot be listed by other users.'),
+					'error' => $l->t('Your data directory is readable by other people.'),
+					'hint' => $l->t('Please change the permissions to 0770 so that the directory cannot be listed by other people.'),
 				]];
 			}
 		}
@@ -805,7 +616,7 @@ class OC_Util {
 
 	/**
 	 * Check that the data directory exists and is valid by
-	 * checking the existence of the ".ocdata" file.
+	 * checking the existence of the ".ncdata" file.
 	 *
 	 * @param string $dataDirectory data directory path
 	 * @return array errors found
@@ -819,11 +630,11 @@ class OC_Util {
 				'hint' => $l->t('Check the value of "datadirectory" in your configuration.')
 			];
 		}
-		if (!file_exists($dataDirectory . '/.ocdata')) {
+
+		if (!file_exists($dataDirectory . '/.ncdata')) {
 			$errors[] = [
 				'error' => $l->t('Your data directory is invalid.'),
-				'hint' => $l->t('Ensure there is a file called ".ocdata"' .
-					' in the root of the data directory.')
+				'hint' => $l->t('Ensure there is a file called "%1$s" in the root of the data directory. It should have the content: "%2$s"', ['.ncdata', '# Nextcloud data directory']),
 			];
 		}
 		return $errors;
@@ -839,16 +650,16 @@ class OC_Util {
 		// Check if we are a user
 		if (!\OC::$server->getUserSession()->isLoggedIn()) {
 			header('Location: ' . \OC::$server->getURLGenerator()->linkToRoute(
-						'core.login.showLoginForm',
-						[
-							'redirect_url' => \OC::$server->getRequest()->getRequestUri(),
-						]
-					)
+				'core.login.showLoginForm',
+				[
+					'redirect_url' => \OC::$server->getRequest()->getRequestUri(),
+				]
+			)
 			);
 			exit();
 		}
 		// Redirect to 2FA challenge selection if 2FA challenge was not solved yet
-		if (\OC::$server->getTwoFactorAuthManager()->needsSecondFactor(\OC::$server->getUserSession()->getUser())) {
+		if (\OC::$server->get(TwoFactorAuthManager::class)->needsSecondFactor(\OC::$server->getUserSession()->getUser())) {
 			header('Location: ' . \OC::$server->getURLGenerator()->linkToRoute('core.TwoFactorChallenge.selectChallenge'));
 			exit();
 		}
@@ -901,7 +712,7 @@ class OC_Util {
 		$id = \OC::$server->getSystemConfig()->getValue('instanceid', null);
 		if (is_null($id)) {
 			// We need to guarantee at least one letter in instanceid so it can be used as the session_name
-			$id = 'oc' . \OC::$server->getSecureRandom()->generate(10, \OCP\Security\ISecureRandom::CHAR_LOWER.\OCP\Security\ISecureRandom::CHAR_DIGITS);
+			$id = 'oc' . \OC::$server->get(ISecureRandom::class)->generate(10, \OCP\Security\ISecureRandom::CHAR_LOWER . \OCP\Security\ISecureRandom::CHAR_DIGITS);
 			\OC::$server->getSystemConfig()->setValue('instanceid', $id);
 		}
 		return $id;
@@ -957,7 +768,7 @@ class OC_Util {
 		$testContent = 'This is used for testing whether htaccess is properly enabled to disallow access from the outside. This file can be safely removed.';
 
 		// creating a test file
-		$testFile = $config->getSystemValue('datadirectory', OC::$SERVERROOT . '/data') . '/' . $fileName;
+		$testFile = $config->getSystemValueString('datadirectory', OC::$SERVERROOT . '/data') . '/' . $fileName;
 
 		if (file_exists($testFile)) {// already running this test, possible recursive call
 			return false;
@@ -983,7 +794,7 @@ class OC_Util {
 	 * @throws \OCP\HintException If the test file can't get written.
 	 */
 	public function isHtaccessWorking(\OCP\IConfig $config) {
-		if (\OC::$CLI || !$config->getSystemValue('check_for_working_htaccess', true)) {
+		if (\OC::$CLI || !$config->getSystemValueBool('check_for_working_htaccess', true)) {
 			return true;
 		}
 
@@ -993,24 +804,24 @@ class OC_Util {
 		}
 
 		$fileName = '/htaccesstest.txt';
-		$testFile = $config->getSystemValue('datadirectory', OC::$SERVERROOT . '/data') . '/' . $fileName;
+		$testFile = $config->getSystemValueString('datadirectory', OC::$SERVERROOT . '/data') . '/' . $fileName;
 
 		// accessing the file via http
 		$url = \OC::$server->getURLGenerator()->getAbsoluteURL(OC::$WEBROOT . '/data' . $fileName);
 		try {
-			$content = \OC::$server->getHTTPClientService()->newClient()->get($url)->getBody();
+			$content = \OC::$server->get(IClientService::class)->newClient()->get($url)->getBody();
 		} catch (\Exception $e) {
 			$content = false;
 		}
 
-		if (strpos($url, 'https:') === 0) {
+		if (str_starts_with($url, 'https:')) {
 			$url = 'http:' . substr($url, 6);
 		} else {
 			$url = 'https:' . substr($url, 5);
 		}
 
 		try {
-			$fallbackContent = \OC::$server->getHTTPClientService()->newClient()->get($url)->getBody();
+			$fallbackContent = \OC::$server->get(IClientService::class)->newClient()->get($url)->getBody();
 		} catch (\Exception $e) {
 			$fallbackContent = false;
 		}
@@ -1032,11 +843,11 @@ class OC_Util {
 	 */
 	private static function isNonUTF8Locale() {
 		if (function_exists('escapeshellcmd')) {
-			return '' === escapeshellcmd('§');
+			return escapeshellcmd('§') === '';
 		} elseif (function_exists('escapeshellarg')) {
-			return '\'\'' === escapeshellarg('§');
+			return escapeshellarg('§') === '\'\'';
 		} else {
-			return 0 === preg_match('/utf-?8/i', setlocale(LC_CTYPE, 0));
+			return preg_match('/utf-?8/i', setlocale(LC_CTYPE, 0)) === 0;
 		}
 	}
 
@@ -1067,7 +878,12 @@ class OC_Util {
 	 * @return bool
 	 */
 	public static function isAnnotationsWorking() {
-		$reflection = new \ReflectionMethod(__METHOD__);
+		if (PHP_VERSION_ID >= 80300) {
+			/** @psalm-suppress UndefinedMethod */
+			$reflection = \ReflectionMethod::createFromMethodName(__METHOD__);
+		} else {
+			$reflection = new \ReflectionMethod(__METHOD__);
+		}
 		$docs = $reflection->getDocComment();
 
 		return (is_string($docs) && strlen($docs) > 50);
@@ -1109,7 +925,7 @@ class OC_Util {
 	 * @return string the theme
 	 */
 	public static function getTheme() {
-		$theme = \OC::$server->getSystemConfig()->getValue("theme", '');
+		$theme = \OC::$server->getSystemConfig()->getValue('theme', '');
 
 		if ($theme === '') {
 			if (is_dir(OC::$SERVERROOT . '/themes/default')) {
@@ -1133,54 +949,11 @@ class OC_Util {
 
 		$normalizedValue = Normalizer::normalize($value);
 		if ($normalizedValue === null || $normalizedValue === false) {
-			\OC::$server->getLogger()->warning('normalizing failed for "' . $value . '"', ['app' => 'core']);
+			\OCP\Server::get(LoggerInterface::class)->warning('normalizing failed for "' . $value . '"', ['app' => 'core']);
 			return $value;
 		}
 
 		return $normalizedValue;
-	}
-
-	/**
-	 * A human readable string is generated based on version and build number
-	 *
-	 * @return string
-	 */
-	public static function getHumanVersion() {
-		$version = OC_Util::getVersionString();
-		$build = OC_Util::getBuild();
-		if (!empty($build) and OC_Util::getChannel() === 'daily') {
-			$version .= ' Build:' . $build;
-		}
-		return $version;
-	}
-
-	/**
-	 * Returns whether the given file name is valid
-	 *
-	 * @param string $file file name to check
-	 * @return bool true if the file name is valid, false otherwise
-	 * @deprecated use \OC\Files\View::verifyPath()
-	 */
-	public static function isValidFileName($file) {
-		$trimmed = trim($file);
-		if ($trimmed === '') {
-			return false;
-		}
-		if (\OC\Files\Filesystem::isIgnoredDir($trimmed)) {
-			return false;
-		}
-
-		// detect part files
-		if (preg_match('/' . \OCP\Files\FileInfo::BLACKLIST_FILES_REGEX . '/', $trimmed) !== 0) {
-			return false;
-		}
-
-		foreach (str_split($trimmed) as $char) {
-			if (strpos(\OCP\Constants::FILENAME_INVALID_CHARS, $char) !== false) {
-				return false;
-			}
-		}
-		return true;
 	}
 
 	/**

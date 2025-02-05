@@ -3,72 +3,61 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2018, Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Core\Controller;
 
 use OC\Authentication\Events\AppPasswordCreatedEvent;
-use OC\Authentication\Exceptions\InvalidTokenException;
 use OC\Authentication\Token\IProvider;
 use OC\Authentication\Token\IToken;
+use OC\User\Session;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\Attribute\ApiRoute;
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\NoAdminRequired;
+use OCP\AppFramework\Http\Attribute\PasswordConfirmationRequired;
+use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCS\OCSForbiddenException;
 use OCP\Authentication\Exceptions\CredentialsUnavailableException;
+use OCP\Authentication\Exceptions\InvalidTokenException;
 use OCP\Authentication\Exceptions\PasswordUnavailableException;
 use OCP\Authentication\LoginCredentials\IStore;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IRequest;
 use OCP\ISession;
+use OCP\IUserManager;
+use OCP\Security\Bruteforce\IThrottler;
 use OCP\Security\ISecureRandom;
 
 class AppPasswordController extends \OCP\AppFramework\OCSController {
-	private ISession $session;
-	private ISecureRandom $random;
-	private IProvider $tokenProvider;
-	private IStore $credentialStore;
-	private IEventDispatcher $eventDispatcher;
-
-	public function __construct(string $appName,
-								IRequest $request,
-								ISession $session,
-								ISecureRandom $random,
-								IProvider $tokenProvider,
-								IStore $credentialStore,
-								IEventDispatcher $eventDispatcher) {
+	public function __construct(
+		string $appName,
+		IRequest $request,
+		private ISession $session,
+		private ISecureRandom $random,
+		private IProvider $tokenProvider,
+		private IStore $credentialStore,
+		private IEventDispatcher $eventDispatcher,
+		private Session $userSession,
+		private IUserManager $userManager,
+		private IThrottler $throttler,
+	) {
 		parent::__construct($appName, $request);
-
-		$this->session = $session;
-		$this->random = $random;
-		$this->tokenProvider = $tokenProvider;
-		$this->credentialStore = $credentialStore;
-		$this->eventDispatcher = $eventDispatcher;
 	}
 
 	/**
-	 * @NoAdminRequired
+	 * Create app password
 	 *
-	 * @throws OCSForbiddenException
+	 * @return DataResponse<Http::STATUS_OK, array{apppassword: string}, array{}>
+	 * @throws OCSForbiddenException Creating app password is not allowed
+	 *
+	 * 200: App password returned
 	 */
+	#[NoAdminRequired]
+	#[PasswordConfirmationRequired]
+	#[ApiRoute(verb: 'GET', url: '/getapppassword', root: '/core')]
 	public function getAppPassword(): DataResponse {
 		// We do not allow the creation of new tokens if this is an app password
 		if ($this->session->exists('app_password')) {
@@ -89,7 +78,7 @@ class AppPasswordController extends \OCP\AppFramework\OCSController {
 
 		$userAgent = $this->request->getHeader('USER_AGENT');
 
-		$token = $this->random->generate(72, ISecureRandom::CHAR_UPPER.ISecureRandom::CHAR_LOWER.ISecureRandom::CHAR_DIGITS);
+		$token = $this->random->generate(72, ISecureRandom::CHAR_UPPER . ISecureRandom::CHAR_LOWER . ISecureRandom::CHAR_DIGITS);
 
 		$generatedToken = $this->tokenProvider->generateToken(
 			$token,
@@ -111,8 +100,15 @@ class AppPasswordController extends \OCP\AppFramework\OCSController {
 	}
 
 	/**
-	 * @NoAdminRequired
+	 * Delete app password
+	 *
+	 * @return DataResponse<Http::STATUS_OK, list<empty>, array{}>
+	 * @throws OCSForbiddenException Deleting app password is not allowed
+	 *
+	 * 200: App password deleted successfully
 	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'DELETE', url: '/apppassword', root: '/core')]
 	public function deleteAppPassword(): DataResponse {
 		if (!$this->session->exists('app_password')) {
 			throw new OCSForbiddenException('no app password in use');
@@ -131,8 +127,15 @@ class AppPasswordController extends \OCP\AppFramework\OCSController {
 	}
 
 	/**
-	 * @NoAdminRequired
+	 * Rotate app password
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{apppassword: string}, array{}>
+	 * @throws OCSForbiddenException Rotating app password is not allowed
+	 *
+	 * 200: App password returned
 	 */
+	#[NoAdminRequired]
+	#[ApiRoute(verb: 'POST', url: '/apppassword/rotate', root: '/core')]
 	public function rotateAppPassword(): DataResponse {
 		if (!$this->session->exists('app_password')) {
 			throw new OCSForbiddenException('no app password in use');
@@ -146,11 +149,40 @@ class AppPasswordController extends \OCP\AppFramework\OCSController {
 			throw new OCSForbiddenException('could not rotate apptoken');
 		}
 
-		$newToken = $this->random->generate(72, ISecureRandom::CHAR_UPPER.ISecureRandom::CHAR_LOWER.ISecureRandom::CHAR_DIGITS);
+		$newToken = $this->random->generate(72, ISecureRandom::CHAR_UPPER . ISecureRandom::CHAR_LOWER . ISecureRandom::CHAR_DIGITS);
 		$this->tokenProvider->rotate($token, $appPassword, $newToken);
 
 		return new DataResponse([
 			'apppassword' => $newToken,
 		]);
+	}
+
+	/**
+	 * Confirm the user password
+	 *
+	 * @param string $password The password of the user
+	 *
+	 * @return DataResponse<Http::STATUS_OK, array{lastLogin: int}, array{}>|DataResponse<Http::STATUS_FORBIDDEN, list<empty>, array{}>
+	 *
+	 * 200: Password confirmation succeeded
+	 * 403: Password confirmation failed
+	 */
+	#[NoAdminRequired]
+	#[BruteForceProtection(action: 'sudo')]
+	#[UseSession]
+	#[ApiRoute(verb: 'PUT', url: '/apppassword/confirm', root: '/core')]
+	public function confirmUserPassword(string $password): DataResponse {
+		$loginName = $this->userSession->getLoginName();
+		$loginResult = $this->userManager->checkPassword($loginName, $password);
+		if ($loginResult === false) {
+			$response = new DataResponse([], Http::STATUS_FORBIDDEN);
+			$response->throttle(['loginName' => $loginName]);
+			return $response;
+		}
+
+		$confirmTimestamp = time();
+		$this->session->set('last-password-confirm', $confirmTimestamp);
+		$this->throttler->resetDelay($this->request->getRemoteAddress(), 'sudo', ['loginName' => $loginName]);
+		return new DataResponse(['lastLogin' => $confirmTimestamp], Http::STATUS_OK);
 	}
 }

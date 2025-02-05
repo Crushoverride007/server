@@ -46,6 +46,7 @@
     "Nextcloud workflow engine" : "Nextcloud 工作流引擎",
     "Select a filter" : "选择一个过滤器",
     "Select a comparator" : "选择一个比较器",
+    "Remove filter" : "移除过滤条件",
     "Select a file type" : "选择一个文件类型",
     "e.g. httpd/unix-directory" : "例如： httpd/unix-directory",
     "Folder" : "文件夹",
@@ -55,9 +56,7 @@
     "Custom mimetype" : "自定义MIME类型",
     "Please enter a valid time span" : "请输入有效的时间范围",
     "Select a request URL" : "选择一个请求URL",
-    "Predefined URLs" : "预定义 URL",
     "Files WebDAV" : "文件 WebDAV",
-    "Others" : "其它",
     "Custom URL" : "自定义URL",
     "Select a user agent" : "选择一个用户代理",
     "Android client" : "Android 客户端",
@@ -65,6 +64,8 @@
     "Desktop client" : "桌面客户端",
     "Thunderbird & Outlook addons" : "Thunderbird & Outlook 插件",
     "Custom user agent" : "自定义用户代理",
+    "Select groups" : "选择用户组",
+    "Groups" : "用户组",
     "At least one event must be selected" : "必须至少选择一个事件",
     "Add new flow" : "添加新的流程",
     "When" : "时间",
@@ -82,6 +83,7 @@
     "Show more" : "显示更多",
     "Configured flows" : "已配置的流程",
     "Your flows" : "你的流程",
+    "No flows configured" : "未配置任何流程",
     "matches" : "匹配",
     "does not match" : "不匹配",
     "is" : "是",
@@ -106,12 +108,7 @@
     "between" : "之间",
     "not between" : "不在之间",
     "Request user agent" : "请求用户代理",
-    "User group membership" : "用户组成员资格",
     "is member of" : "是成员",
-    "is not member of" : "不是成员",
-    "Select a tag" : "选择标签",
-    "No results" : "没有结果",
-    "%s (invisible)" : "%s（不可见）",
-    "%s (restricted)" : "%s（受限）"
+    "is not member of" : "不是成员"
 },"pluralForm" :"nplurals=1; plural=0;"
 }

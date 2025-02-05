@@ -1,11 +1,9 @@
 <?php
 
 /**
- * Copyright (c) 2015 Vincent Petry <pvince81@owncloud.com>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
- *
+ * SPDX-FileCopyrightText: 2019-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\SystemTag;
@@ -13,12 +11,12 @@ namespace Test\SystemTag;
 use OC\SystemTag\SystemTag;
 use OC\SystemTag\SystemTagManager;
 use OC\SystemTag\SystemTagObjectMapper;
+use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
 use OCP\SystemTag\ISystemTag;
 use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\ISystemTagObjectMapper;
 use OCP\SystemTag\TagNotFoundException;
-use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Test\TestCase;
 
 /**
@@ -28,7 +26,6 @@ use Test\TestCase;
  * @package Test\SystemTag
  */
 class SystemTagObjectMapperTest extends TestCase {
-
 	/**
 	 * @var ISystemTagManager
 	 **/
@@ -45,7 +42,7 @@ class SystemTagObjectMapperTest extends TestCase {
 	private $connection;
 
 	/**
-	 * @var EventDispatcherInterface
+	 * @var IEventDispatcher
 	 */
 	private $dispatcher;
 
@@ -70,11 +67,8 @@ class SystemTagObjectMapperTest extends TestCase {
 		$this->connection = \OC::$server->getDatabaseConnection();
 		$this->pruneTagsTables();
 
-		$this->tagManager = $this->getMockBuilder('OCP\SystemTag\ISystemTagManager')
-			->getMock();
-
-		$this->dispatcher = $this->getMockBuilder('Symfony\Component\EventDispatcher\EventDispatcherInterface')
-			->getMock();
+		$this->tagManager = $this->createMock(ISystemTagManager::class);
+		$this->dispatcher = $this->createMock(IEventDispatcher::class);
 
 		$this->tagMapper = new SystemTagObjectMapper(
 			$this->connection,
@@ -119,7 +113,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		$query->delete(SystemTagManager::TAG_TABLE)->execute();
 	}
 
-	public function testGetTagIdsForObjects() {
+	public function testGetTagIdsForObjects(): void {
 		$tagIdMapping = $this->tagMapper->getTagIdsForObjects(
 			['1', '2', '3', '4'],
 			'testtype'
@@ -133,7 +127,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $tagIdMapping);
 	}
 
-	public function testGetTagIdsForNoObjects() {
+	public function testGetTagIdsForNoObjects(): void {
 		$tagIdMapping = $this->tagMapper->getTagIdsForObjects(
 			[],
 			'testtype'
@@ -142,11 +136,23 @@ class SystemTagObjectMapperTest extends TestCase {
 		$this->assertEquals([], $tagIdMapping);
 	}
 
-	public function testGetObjectsForTags() {
+	public function testGetTagIdsForALotOfObjects(): void {
+		$ids = range(1, 10500);
+		$tagIdMapping = $this->tagMapper->getTagIdsForObjects(
+			$ids,
+			'testtype'
+		);
+
+		$this->assertEquals(10500, count($tagIdMapping));
+		$this->assertEquals([$this->tag1->getId(), $this->tag2->getId()], $tagIdMapping[1]);
+	}
+
+	public function testGetObjectsForTags(): void {
 		$objectIds = $this->tagMapper->getObjectIdsForTags(
 			[$this->tag1->getId(), $this->tag2->getId(), $this->tag3->getId()],
 			'testtype'
 		);
+		sort($objectIds);
 
 		$this->assertEquals([
 			'1',
@@ -154,7 +160,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $objectIds);
 	}
 
-	public function testGetObjectsForTagsLimit() {
+	public function testGetObjectsForTagsLimit(): void {
 		$objectIds = $this->tagMapper->getObjectIdsForTags(
 			[$this->tag1->getId()],
 			'testtype',
@@ -166,8 +172,8 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $objectIds);
 	}
 
-	
-	public function testGetObjectsForTagsLimitWithMultipleTags() {
+
+	public function testGetObjectsForTagsLimitWithMultipleTags(): void {
 		$this->expectException(\InvalidArgumentException::class);
 
 		$this->tagMapper->getObjectIdsForTags(
@@ -177,7 +183,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		);
 	}
 
-	public function testGetObjectsForTagsLimitOffset() {
+	public function testGetObjectsForTagsLimitOffset(): void {
 		$objectIds = $this->tagMapper->getObjectIdsForTags(
 			[$this->tag1->getId()],
 			'testtype',
@@ -190,8 +196,8 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $objectIds);
 	}
 
-	
-	public function testGetObjectsForNonExistingTag() {
+
+	public function testGetObjectsForNonExistingTag(): void {
 		$this->expectException(\OCP\SystemTag\TagNotFoundException::class);
 
 		$this->tagMapper->getObjectIdsForTags(
@@ -200,7 +206,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		);
 	}
 
-	public function testAssignUnassignTags() {
+	public function testAssignUnassignTags(): void {
 		$this->tagMapper->unassignTags('1', 'testtype', [$this->tag1->getId()]);
 
 		$tagIdMapping = $this->tagMapper->getTagIdsForObjects('1', 'testtype');
@@ -218,7 +224,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $tagIdMapping);
 	}
 
-	public function testReAssignUnassignTags() {
+	public function testReAssignUnassignTags(): void {
 		// reassign tag1
 		$this->tagMapper->assignTags('1', 'testtype', [$this->tag1->getId()]);
 
@@ -228,14 +234,14 @@ class SystemTagObjectMapperTest extends TestCase {
 		$this->assertTrue(true, 'No error when reassigning/unassigning');
 	}
 
-	
-	public function testAssignNonExistingTags() {
+
+	public function testAssignNonExistingTags(): void {
 		$this->expectException(\OCP\SystemTag\TagNotFoundException::class);
 
 		$this->tagMapper->assignTags('1', 'testtype', [100]);
 	}
 
-	public function testAssignNonExistingTagInArray() {
+	public function testAssignNonExistingTagInArray(): void {
 		$caught = false;
 		try {
 			$this->tagMapper->assignTags('1', 'testtype', [100, $this->tag3->getId()]);
@@ -255,14 +261,14 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $tagIdMapping, 'None of the tags got assigned');
 	}
 
-	
-	public function testUnassignNonExistingTags() {
+
+	public function testUnassignNonExistingTags(): void {
 		$this->expectException(\OCP\SystemTag\TagNotFoundException::class);
 
 		$this->tagMapper->unassignTags('1', 'testtype', [100]);
 	}
 
-	public function testUnassignNonExistingTagsInArray() {
+	public function testUnassignNonExistingTagsInArray(): void {
 		$caught = false;
 		try {
 			$this->tagMapper->unassignTags('1', 'testtype', [100, $this->tag1->getId()]);
@@ -282,7 +288,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		], $tagIdMapping, 'None of the tags got unassigned');
 	}
 
-	public function testHaveTagAllMatches() {
+	public function testHaveTagAllMatches(): void {
 		$this->assertTrue(
 			$this->tagMapper->haveTag(
 				['1'],
@@ -334,7 +340,7 @@ class SystemTagObjectMapperTest extends TestCase {
 		);
 	}
 
-	public function testHaveTagAtLeastOneMatch() {
+	public function testHaveTagAtLeastOneMatch(): void {
 		$this->assertTrue(
 			$this->tagMapper->haveTag(
 				['1'],
@@ -386,8 +392,8 @@ class SystemTagObjectMapperTest extends TestCase {
 		);
 	}
 
-	
-	public function testHaveTagNonExisting() {
+
+	public function testHaveTagNonExisting(): void {
 		$this->expectException(\OCP\SystemTag\TagNotFoundException::class);
 
 		$this->tagMapper->haveTag(

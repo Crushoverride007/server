@@ -1,33 +1,10 @@
 <?php
 
 declare(strict_types=1);
-
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Victor Dubiniuk <dubiniuk@owncloud.com>
- * @author Vincent Petry <vincent@nextcloud.com>
- * @author Xheni Myrtaj <myrtajxheni@gmail.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\IntegrityCheck;
 
@@ -40,9 +17,11 @@ use OC\IntegrityCheck\Iterator\ExcludeFileByNameFilterIterator;
 use OC\IntegrityCheck\Iterator\ExcludeFoldersByPathFilterIterator;
 use OCP\App\IAppManager;
 use OCP\Files\IMimeTypeDetector;
+use OCP\IAppConfig;
 use OCP\ICache;
 use OCP\ICacheFactory;
 use OCP\IConfig;
+use OCP\ServerVersion;
 use phpseclib\Crypt\RSA;
 use phpseclib\File\X509;
 
@@ -58,44 +37,21 @@ use phpseclib\File\X509;
  */
 class Checker {
 	public const CACHE_KEY = 'oc.integritycheck.checker';
-	/** @var EnvironmentHelper */
-	private $environmentHelper;
-	/** @var AppLocator */
-	private $appLocator;
-	/** @var FileAccessHelper */
-	private $fileAccessHelper;
-	/** @var IConfig|null */
-	private $config;
-	/** @var ICache */
-	private $cache;
-	/** @var IAppManager|null */
-	private $appManager;
-	/** @var IMimeTypeDetector */
-	private $mimeTypeDetector;
 
-	/**
-	 * @param EnvironmentHelper $environmentHelper
-	 * @param FileAccessHelper $fileAccessHelper
-	 * @param AppLocator $appLocator
-	 * @param IConfig|null $config
-	 * @param ICacheFactory $cacheFactory
-	 * @param IAppManager|null $appManager
-	 * @param IMimeTypeDetector $mimeTypeDetector
-	 */
-	public function __construct(EnvironmentHelper $environmentHelper,
-								FileAccessHelper $fileAccessHelper,
-								AppLocator $appLocator,
-								?IConfig $config,
-								ICacheFactory $cacheFactory,
-								?IAppManager $appManager,
-								IMimeTypeDetector $mimeTypeDetector) {
-		$this->environmentHelper = $environmentHelper;
-		$this->fileAccessHelper = $fileAccessHelper;
-		$this->appLocator = $appLocator;
-		$this->config = $config;
+	private ICache $cache;
+
+	public function __construct(
+		private ServerVersion $serverVersion,
+		private EnvironmentHelper $environmentHelper,
+		private FileAccessHelper $fileAccessHelper,
+		private AppLocator $appLocator,
+		private ?IConfig $config,
+		private ?IAppConfig $appConfig,
+		ICacheFactory $cacheFactory,
+		private IAppManager $appManager,
+		private IMimeTypeDetector $mimeTypeDetector,
+	) {
 		$this->cache = $cacheFactory->createDistributed(self::CACHE_KEY);
-		$this->appManager = $appManager;
-		$this->mimeTypeDetector = $mimeTypeDetector;
 	}
 
 	/**
@@ -105,7 +61,7 @@ class Checker {
 	 */
 	public function isCodeCheckEnforced(): bool {
 		$notSignedChannels = [ '', 'git'];
-		if (\in_array($this->environmentHelper->getChannel(), $notSignedChannels, true)) {
+		if (\in_array($this->serverVersion->getChannel(), $notSignedChannels, true)) {
 			return false;
 		}
 
@@ -114,15 +70,7 @@ class Checker {
 		 * applicable for very specific scenarios and we should not advertise it
 		 * too prominent. So please do not add it to config.sample.php.
 		 */
-		$isIntegrityCheckDisabled = false;
-		if ($this->config !== null) {
-			$isIntegrityCheckDisabled = $this->config->getSystemValue('integrity.check.disabled', false);
-		}
-		if ($isIntegrityCheckDisabled === true) {
-			return false;
-		}
-
-		return true;
+		return !($this->config?->getSystemValueBool('integrity.check.disabled', false) ?? false);
 	}
 
 	/**
@@ -161,7 +109,7 @@ class Checker {
 	 * @return array Array of hashes.
 	 */
 	private function generateHashes(\RecursiveIteratorIterator $iterator,
-									string $path): array {
+		string $path): array {
 		$hashes = [];
 
 		$baseDirectoryLength = \strlen($path);
@@ -223,8 +171,8 @@ class Checker {
 	 * @return array
 	 */
 	private function createSignatureData(array $hashes,
-										 X509 $certificate,
-										 RSA $privateKey): array {
+		X509 $certificate,
+		RSA $privateKey): array {
 		ksort($hashes);
 
 		$privateKey->setSignatureMode(RSA::SIGNATURE_PSS);
@@ -249,8 +197,8 @@ class Checker {
 	 * @throws \Exception
 	 */
 	public function writeAppSignature($path,
-									  X509 $certificate,
-									  RSA $privateKey) {
+		X509 $certificate,
+		RSA $privateKey) {
 		$appInfoDir = $path . '/appinfo';
 		try {
 			$this->fileAccessHelper->assertDirectoryExists($appInfoDir);
@@ -259,7 +207,7 @@ class Checker {
 			$hashes = $this->generateHashes($iterator, $path);
 			$signature = $this->createSignatureData($hashes, $certificate, $privateKey);
 			$this->fileAccessHelper->file_put_contents(
-					$appInfoDir . '/signature.json',
+				$appInfoDir . '/signature.json',
 				json_encode($signature, JSON_PRETTY_PRINT)
 			);
 		} catch (\Exception $e) {
@@ -279,8 +227,8 @@ class Checker {
 	 * @throws \Exception
 	 */
 	public function writeCoreSignature(X509 $certificate,
-									   RSA $rsa,
-									   $path) {
+		RSA $rsa,
+		$path) {
 		$coreDir = $path . '/core';
 		try {
 			$this->fileAccessHelper->assertDirectoryExists($coreDir);
@@ -344,7 +292,7 @@ class Checker {
 
 		// Check if certificate is signed by Nextcloud Root Authority
 		$x509 = new \phpseclib\File\X509();
-		$rootCertificatePublicKey = $this->fileAccessHelper->file_get_contents($this->environmentHelper->getServerRoot().'/resources/codesigning/root.crt');
+		$rootCertificatePublicKey = $this->fileAccessHelper->file_get_contents($this->environmentHelper->getServerRoot() . '/resources/codesigning/root.crt');
 
 		$rootCerts = $this->splitCerts($rootCertificatePublicKey);
 		foreach ($rootCerts as $rootCert) {
@@ -357,7 +305,7 @@ class Checker {
 		// Verify if certificate has proper CN. "core" CN is always trusted.
 		if ($x509->getDN(X509::DN_OPENSSL)['CN'] !== $certificateCN && $x509->getDN(X509::DN_OPENSSL)['CN'] !== 'core') {
 			throw new InvalidSignatureException(
-					sprintf('Certificate is not valid for required scope. (Requested: %s, current: CN=%s)', $certificateCN, $x509->getDN(true)['CN'])
+				sprintf('Certificate is not valid for required scope. (Requested: %s, current: CN=%s)', $certificateCN, $x509->getDN(true)['CN'])
 			);
 		}
 
@@ -379,7 +327,7 @@ class Checker {
 		// integrity check.
 		if ($basePath === $this->environmentHelper->getServerRoot()) {
 			foreach ($expectedHashes as $fileName => $hash) {
-				if (strpos($fileName, 'updater/') === 0) {
+				if (str_starts_with($fileName, 'updater/')) {
 					unset($expectedHashes[$fileName]);
 				}
 			}
@@ -427,7 +375,7 @@ class Checker {
 	 */
 	public function hasPassedCheck(): bool {
 		$results = $this->getResults();
-		if (empty($results)) {
+		if ($results !== null && empty($results)) {
 			return true;
 		}
 
@@ -435,18 +383,20 @@ class Checker {
 	}
 
 	/**
-	 * @return array
+	 * @return array|null Either the results or null if no results available
 	 */
-	public function getResults(): array {
+	public function getResults(): ?array {
 		$cachedResults = $this->cache->get(self::CACHE_KEY);
-		if (!\is_null($cachedResults)) {
+		if (!\is_null($cachedResults) and $cachedResults !== false) {
 			return json_decode($cachedResults, true);
 		}
 
-		if ($this->config !== null) {
-			return json_decode($this->config->getAppValue('core', self::CACHE_KEY, '{}'), true);
+		if ($this->appConfig?->hasKey('core', self::CACHE_KEY, lazy: true)) {
+			return $this->appConfig->getValueArray('core', self::CACHE_KEY, lazy: true);
 		}
-		return [];
+
+		// No results available
+		return null;
 	}
 
 	/**
@@ -456,14 +406,12 @@ class Checker {
 	 * @param array $result
 	 */
 	private function storeResults(string $scope, array $result) {
-		$resultArray = $this->getResults();
+		$resultArray = $this->getResults() ?? [];
 		unset($resultArray[$scope]);
 		if (!empty($result)) {
 			$resultArray[$scope] = $result;
 		}
-		if ($this->config !== null) {
-			$this->config->setAppValue('core', self::CACHE_KEY, json_encode($resultArray));
-		}
+		$this->appConfig?->setValueArray('core', self::CACHE_KEY, $resultArray, lazy: true);
 		$this->cache->set(self::CACHE_KEY, json_encode($resultArray));
 	}
 
@@ -472,7 +420,7 @@ class Checker {
 	 * Clean previous results for a proper rescanning. Otherwise
 	 */
 	private function cleanResults() {
-		$this->config->deleteAppValue('core', self::CACHE_KEY);
+		$this->appConfig->deleteKey('core', self::CACHE_KEY);
 		$this->cache->remove(self::CACHE_KEY);
 	}
 
@@ -515,10 +463,10 @@ class Checker {
 				$path = $this->appLocator->getAppPath($appId);
 			}
 			$result = $this->verify(
-					$path . '/appinfo/signature.json',
-					$path,
-					$appId,
-					$forceVerify
+				$path . '/appinfo/signature.json',
+				$path,
+				$appId,
+				$forceVerify
 			);
 		} catch (\Exception $e) {
 			$result = [
@@ -566,9 +514,9 @@ class Checker {
 	public function verifyCoreSignature(): array {
 		try {
 			$result = $this->verify(
-					$this->environmentHelper->getServerRoot() . '/core/signature.json',
-					$this->environmentHelper->getServerRoot(),
-					'core'
+				$this->environmentHelper->getServerRoot() . '/core/signature.json',
+				$this->environmentHelper->getServerRoot(),
+				'core'
 			);
 		} catch (\Exception $e) {
 			$result = [
@@ -590,7 +538,7 @@ class Checker {
 	public function runInstanceVerification() {
 		$this->cleanResults();
 		$this->verifyCoreSignature();
-		$appIds = $this->appLocator->getAllApps();
+		$appIds = $this->appManager->getAllAppsInAppsFolders();
 		foreach ($appIds as $appId) {
 			// If an application is shipped a valid signature is required
 			$isShipped = $this->appManager->isShipped($appId);

@@ -1,25 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Arthur Schiwon <blizzz@arthur-schiwon.de>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\Comments\Collaboration;
 
@@ -27,14 +9,12 @@ use OCP\Collaboration\AutoComplete\ISorter;
 use OCP\Comments\ICommentsManager;
 
 class CommentersSorter implements ISorter {
-
-	private ICommentsManager $commentsManager;
-
-	public function __construct(ICommentsManager $commentsManager) {
-		$this->commentsManager = $commentsManager;
+	public function __construct(
+		private ICommentsManager $commentsManager,
+	) {
 	}
 
-	public function getId() {
+	public function getId(): string {
 		return 'commenters';
 	}
 
@@ -42,10 +22,10 @@ class CommentersSorter implements ISorter {
 	 * Sorts people who commented on the given item atop (descelating) of the
 	 * others
 	 *
-	 * @param array $sortArray
+	 * @param array &$sortArray
 	 * @param array $context
 	 */
-	public function sort(array &$sortArray, array $context) {
+	public function sort(array &$sortArray, array $context): void {
 		$commenters = $this->retrieveCommentsInformation($context['itemType'], $context['itemId']);
 		if (count($commenters) === 0) {
 			return;
@@ -76,6 +56,9 @@ class CommentersSorter implements ISorter {
 		}
 	}
 
+	/**
+	 * @return array<string, array<string, int>>
+	 */
 	protected function retrieveCommentsInformation(string $type, string $id): array {
 		$comments = $this->commentsManager->getForObject($type, $id);
 		if (count($comments) === 0) {

@@ -1,6 +1,8 @@
 <?php
-// SPDX-FileCopyrightText: 2018 Georg Ehrke <oc.list@georgehrke.com>
-// SPDX-License-Identifier: AGPL-3.0-or-later
+/**
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 \OCP\Util::addStyle('dav', 'schedule-response');
 ?>
 
@@ -24,10 +26,6 @@
 					<span><?php p($l->t('Decline')); ?></span>
 				</label>
 			</div>
-		</fieldset>
-		<fieldset id="more_options">
-			<input type="number" min="0" name="guests" placeholder="<?php p($l->t('Number of guests')); ?>" />
-			<input type="text" name="comment" placeholder="<?php p($l->t('Comment')); ?>" />
 		</fieldset>
 		<fieldset>
 			<input type="submit" value="<?php p($l->t('Save'));?>">

@@ -1,29 +1,14 @@
 <?php
+
+declare(strict_types=1);
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Olivier Paroz <github@oparoz.com>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCP;
+
+use GdImage;
 
 /**
  * Class for basic image manipulation
@@ -33,69 +18,60 @@ interface IImage {
 	/**
 	 * Determine whether the object contains an image resource.
 	 *
-	 * @return bool
 	 * @since 8.1.0
 	 */
-	public function valid();
+	public function valid(): bool;
 
 	/**
-	 * Returns the MIME type of the image or an empty string if no image is loaded.
+	 * Returns the MIME type of the image or null if no image is loaded.
 	 *
-	 * @return string
 	 * @since 8.1.0
 	 */
-	public function mimeType();
+	public function mimeType(): ?string;
 
 	/**
 	 * Returns the width of the image or -1 if no image is loaded.
 	 *
-	 * @return int
 	 * @since 8.1.0
 	 */
-	public function width();
+	public function width(): int;
 
 	/**
 	 * Returns the height of the image or -1 if no image is loaded.
 	 *
-	 * @return int
 	 * @since 8.1.0
 	 */
-	public function height();
+	public function height(): int;
 
 	/**
 	 * Returns the width when the image orientation is top-left.
 	 *
-	 * @return int
 	 * @since 8.1.0
 	 */
-	public function widthTopLeft();
+	public function widthTopLeft(): int;
 
 	/**
 	 * Returns the height when the image orientation is top-left.
 	 *
-	 * @return int
 	 * @since 8.1.0
 	 */
-	public function heightTopLeft();
+	public function heightTopLeft(): int;
 
 	/**
 	 * Outputs the image.
 	 *
-	 * @param string $mimeType
-	 * @return bool
 	 * @since 8.1.0
 	 */
-	public function show($mimeType = null);
+	public function show(?string $mimeType = null): bool;
 
 	/**
 	 * Saves the image.
 	 *
 	 * @param string $filePath
 	 * @param string $mimeType
-	 * @return bool
 	 * @since 8.1.0
 	 */
-	public function save($filePath = null, $mimeType = null);
+	public function save(?string $filePath = null, ?string $mimeType = null): bool;
 
 	/**
 	 * @return false|resource|\GdImage Returns the image resource if any
@@ -104,16 +80,17 @@ interface IImage {
 	public function resource();
 
 	/**
-	 * @return string Returns the raw data mimetype
+	 * @return string Returns the mimetype of the data. Returns null
+	 *                if the data is not valid.
 	 * @since 13.0.0
 	 */
-	public function dataMimeType();
+	public function dataMimeType(): ?string;
 
 	/**
 	 * @return string Returns the raw image data.
 	 * @since 8.1.0
 	 */
-	public function data();
+	public function data(): ?string;
 
 	/**
 	 * (I'm open for suggestions on better method name ;)
@@ -122,25 +99,23 @@ interface IImage {
 	 * @return int The orientation or -1 if no EXIF data is available.
 	 * @since 8.1.0
 	 */
-	public function getOrientation();
+	public function getOrientation(): int;
 
 	/**
 	 * (I'm open for suggestions on better method name ;)
 	 * Fixes orientation based on EXIF data.
 	 *
-	 * @return bool
 	 * @since 8.1.0
 	 */
-	public function fixOrientation();
+	public function fixOrientation(): bool;
 
 	/**
 	 * Resizes the image preserving ratio.
 	 *
 	 * @param integer $maxSize The maximum size of either the width or height.
-	 * @return bool
 	 * @since 8.1.0
 	 */
-	public function resize($maxSize);
+	public function resize(int $maxSize): bool;
 
 	/**
 	 * @param int $width
@@ -157,7 +132,7 @@ interface IImage {
 	 * @return bool for success or failure
 	 * @since 8.1.0
 	 */
-	public function centerCrop($size = 0);
+	public function centerCrop(int $size = 0): bool;
 
 	/**
 	 * Crops the image from point $x$y with dimension $wx$h.
@@ -174,22 +149,22 @@ interface IImage {
 	/**
 	 * Resizes the image to fit within a boundary while preserving ratio.
 	 *
-	 * @param integer $maxWidth
-	 * @param integer $maxHeight
-	 * @return bool
+	 * Warning: Images smaller than $maxWidth x $maxHeight will end up being scaled up
+	 *
+	 * @param int $maxWidth
+	 * @param int $maxHeight
 	 * @since 8.1.0
 	 */
-	public function fitIn($maxWidth, $maxHeight);
+	public function fitIn(int $maxWidth, int $maxHeight): bool;
 
 	/**
 	 * Shrinks the image to fit within a boundary while preserving ratio.
 	 *
-	 * @param integer $maxWidth
-	 * @param integer $maxHeight
-	 * @return bool
+	 * @param int $maxWidth
+	 * @param int $maxHeight
 	 * @since 8.1.0
 	 */
-	public function scaleDownToFit($maxWidth, $maxHeight);
+	public function scaleDownToFit(int $maxWidth, int $maxHeight): bool;
 
 	/**
 	 * create a copy of this image
@@ -222,11 +197,29 @@ interface IImage {
 	public function preciseResizeCopy(int $width, int $height): IImage;
 
 	/**
-	 * create a new resized copy of this image
+	 * Resizes the image preserving ratio, returning a new copy
 	 *
-	 * @param integer $maxSize The maximum size of either the width or height.
+	 * @param int $maxSize The maximum size of either the width or height.
 	 * @return IImage
 	 * @since 19.0.0
 	 */
 	public function resizeCopy(int $maxSize): IImage;
+
+	/**
+	 * Loads an image from a string of data.
+	 *
+	 * @param string $str A string of image data as read from a file.
+	 *
+	 * @since 31.0.0
+	 */
+	public function loadFromData(string $str): GdImage|false;
+
+	/**
+	 * Reads the EXIF data for an image.
+	 *
+	 * @param string $data EXIF data
+	 *
+	 * @since 31.0.0
+	 */
+	public function readExif(string $data): void;
 }

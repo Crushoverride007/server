@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\SMB;
@@ -62,7 +61,14 @@ class System implements ISystem {
 			$result = null;
 			$output = [];
 			exec("which $binary 2>&1", $output, $result);
-			$this->paths[$binary] = $result === 0 && isset($output[0]) ? (string)$output[0] : null;
+
+			if ($result === 0 && isset($output[0])) {
+				$this->paths[$binary] = (string)$output[0];
+			} elseif (is_executable("/usr/bin/$binary")) {
+				$this->paths[$binary] = "/usr/bin/$binary";
+			} else {
+				$this->paths[$binary] = null;
+			}
 		}
 		return $this->paths[$binary];
 	}

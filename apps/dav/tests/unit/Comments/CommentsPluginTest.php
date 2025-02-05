@@ -1,28 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\Comments;
 
@@ -48,7 +29,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	/** @var ICommentsManager */
 	private $commentsManager;
 
-	/** @var  IUserSession */
+	/** @var IUserSession */
 	private $userSession;
 
 	/** @var CommentsPluginImplementation */
@@ -75,7 +56,7 @@ class CommentsPluginTest extends \Test\TestCase {
 		$this->plugin = new CommentsPluginImplementation($this->commentsManager, $this->userSession);
 	}
 
-	public function testCreateComment() {
+	public function testCreateComment(): void {
 		$commentData = [
 			'actorType' => 'users',
 			'verb' => 'comment',
@@ -171,7 +152,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testCreateCommentInvalidObject() {
+	public function testCreateCommentInvalidObject(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotFound::class);
 
 		$commentData = [
@@ -253,7 +234,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testCreateCommentInvalidActor() {
+	public function testCreateCommentInvalidActor(): void {
 		$this->expectException(\Sabre\DAV\Exception\BadRequest::class);
 
 		$commentData = [
@@ -341,7 +322,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testCreateCommentUnsupportedMediaType() {
+	public function testCreateCommentUnsupportedMediaType(): void {
 		$this->expectException(\Sabre\DAV\Exception\UnsupportedMediaType::class);
 
 		$commentData = [
@@ -429,7 +410,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testCreateCommentInvalidPayload() {
+	public function testCreateCommentInvalidPayload(): void {
 		$this->expectException(\Sabre\DAV\Exception\BadRequest::class);
 
 		$commentData = [
@@ -523,7 +504,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testCreateCommentMessageTooLong() {
+	public function testCreateCommentMessageTooLong(): void {
 		$this->expectException(\Sabre\DAV\Exception\BadRequest::class);
 		$this->expectExceptionMessage('Message exceeds allowed character limit of');
 
@@ -617,7 +598,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testOnReportInvalidNode() {
+	public function testOnReportInvalidNode(): void {
 		$this->expectException(\Sabre\DAV\Exception\ReportNotSupported::class);
 
 		$path = 'totally/unrelated/13';
@@ -640,7 +621,7 @@ class CommentsPluginTest extends \Test\TestCase {
 	}
 
 	
-	public function testOnReportInvalidReportName() {
+	public function testOnReportInvalidReportName(): void {
 		$this->expectException(\Sabre\DAV\Exception\ReportNotSupported::class);
 
 		$path = 'comments/files/42';
@@ -662,7 +643,7 @@ class CommentsPluginTest extends \Test\TestCase {
 		$this->plugin->onReport('{whoever}whatever', [], '/' . $path);
 	}
 
-	public function testOnReportDateTimeEmpty() {
+	public function testOnReportDateTimeEmpty(): void {
 		$path = 'comments/files/42';
 
 		$parameters = [
@@ -717,7 +698,7 @@ class CommentsPluginTest extends \Test\TestCase {
 		$this->plugin->onReport(CommentsPluginImplementation::REPORT_NAME, $parameters, '/' . $path);
 	}
 
-	public function testOnReport() {
+	public function testOnReport(): void {
 		$path = 'comments/files/42';
 
 		$parameters = [

@@ -1,22 +1,8 @@
 <?php
 /**
- * @author Björn Schießle <schiessle@owncloud.com>
- *
- * @copyright Copyright (c) 2015, ownCloud, Inc.
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace Tests\Core\Command\Encryption;
@@ -34,7 +20,6 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Test\TestCase;
 
 class ChangeKeyStorageRootTest extends TestCase {
-
 	/** @var ChangeKeyStorageRoot */
 	protected $changeKeyStorageRoot;
 
@@ -47,7 +32,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	/** @var IConfig | \PHPUnit\Framework\MockObject\MockObject */
 	protected $config;
 
-	/**  @var Util | \PHPUnit\Framework\MockObject\MockObject */
+	/** @var Util | \PHPUnit\Framework\MockObject\MockObject */
 	protected $util;
 
 	/** @var QuestionHelper | \PHPUnit\Framework\MockObject\MockObject */
@@ -76,6 +61,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 
 		/* We need format method to return a string */
 		$outputFormatter = $this->createMock(OutputFormatterInterface::class);
+		$outputFormatter->method('isDecorated')->willReturn(false);
 		$outputFormatter->method('format')->willReturnArgument(0);
 
 		$this->outputInterface->expects($this->any())->method('getFormatter')
@@ -93,7 +79,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	/**
 	 * @dataProvider dataTestExecute
 	 */
-	public function testExecute($newRoot, $answer, $successMoveKey) {
+	public function testExecute($newRoot, $answer, $successMoveKey): void {
 		$changeKeyStorageRoot = $this->getMockBuilder('OC\Core\Command\Encryption\ChangeKeyStorageRoot')
 			->setConstructorArgs(
 				[
@@ -146,8 +132,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 		];
 	}
 
-	public function testMoveAllKeys() {
-
+	public function testMoveAllKeys(): void {
 		/** @var \OC\Core\Command\Encryption\ChangeKeyStorageRoot $changeKeyStorageRoot */
 		$changeKeyStorageRoot = $this->getMockBuilder('OC\Core\Command\Encryption\ChangeKeyStorageRoot')
 			->setConstructorArgs(
@@ -160,14 +145,14 @@ class ChangeKeyStorageRootTest extends TestCase {
 				]
 			)->setMethods(['prepareNewRoot', 'moveSystemKeys', 'moveUserKeys'])->getMock();
 
-		$changeKeyStorageRoot->expects($this->at(0))->method('prepareNewRoot')->with('newRoot');
-		$changeKeyStorageRoot->expects($this->at(1))->method('moveSystemKeys')->with('oldRoot', 'newRoot');
-		$changeKeyStorageRoot->expects($this->at(2))->method('moveUserKeys')->with('oldRoot', 'newRoot', $this->outputInterface);
+		$changeKeyStorageRoot->expects($this->once())->method('prepareNewRoot')->with('newRoot');
+		$changeKeyStorageRoot->expects($this->once())->method('moveSystemKeys')->with('oldRoot', 'newRoot');
+		$changeKeyStorageRoot->expects($this->once())->method('moveUserKeys')->with('oldRoot', 'newRoot', $this->outputInterface);
 
 		$this->invokePrivate($changeKeyStorageRoot, 'moveAllKeys', ['oldRoot', 'newRoot', $this->outputInterface]);
 	}
 
-	public function testPrepareNewRoot() {
+	public function testPrepareNewRoot(): void {
 		$this->view->expects($this->once())->method('is_dir')->with('newRoot')
 			->willReturn(true);
 
@@ -184,7 +169,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	 * @param bool $dirExists
 	 * @param bool $couldCreateFile
 	 */
-	public function testPrepareNewRootException($dirExists, $couldCreateFile) {
+	public function testPrepareNewRootException($dirExists, $couldCreateFile): void {
 		$this->expectException(\Exception::class);
 
 		$this->view->expects($this->once())->method('is_dir')->with('newRoot')
@@ -209,7 +194,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	 * @param bool $targetExists
 	 * @param bool $executeRename
 	 */
-	public function testMoveSystemKeys($dirExists, $targetExists, $executeRename) {
+	public function testMoveSystemKeys($dirExists, $targetExists, $executeRename): void {
 		$changeKeyStorageRoot = $this->getMockBuilder('OC\Core\Command\Encryption\ChangeKeyStorageRoot')
 			->setConstructorArgs(
 				[
@@ -228,7 +213,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 
 		if ($executeRename) {
 			$this->view->expects($this->once())->method('rename')
-			->with('oldRoot/files_encryption', 'newRoot/files_encryption');
+				->with('oldRoot/files_encryption', 'newRoot/files_encryption');
 		} else {
 			$this->view->expects($this->never())->method('rename');
 		}
@@ -246,7 +231,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	}
 
 
-	public function testMoveUserKeys() {
+	public function testMoveUserKeys(): void {
 		$changeKeyStorageRoot = $this->getMockBuilder('OC\Core\Command\Encryption\ChangeKeyStorageRoot')
 			->setConstructorArgs(
 				[
@@ -276,7 +261,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	 * @param bool $targetExists
 	 * @param bool $shouldRename
 	 */
-	public function testMoveUserEncryptionFolder($userExists, $isDir, $targetExists, $shouldRename) {
+	public function testMoveUserEncryptionFolder($userExists, $isDir, $targetExists, $shouldRename): void {
 		$changeKeyStorageRoot = $this->getMockBuilder('OC\Core\Command\Encryption\ChangeKeyStorageRoot')
 			->setConstructorArgs(
 				[
@@ -324,7 +309,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	/**
 	 * @dataProvider dataTestPrepareParentFolder
 	 */
-	public function testPrepareParentFolder($path, $pathExists) {
+	public function testPrepareParentFolder($path, $pathExists): void {
 		$this->view->expects($this->any())->method('file_exists')
 			->willReturnCallback(
 				function ($fileExistsPath) use ($path, $pathExists) {
@@ -356,7 +341,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 		];
 	}
 
-	public function testTargetExists() {
+	public function testTargetExists(): void {
 		$this->view->expects($this->once())->method('file_exists')->with('path')
 			->willReturn(false);
 
@@ -366,7 +351,7 @@ class ChangeKeyStorageRootTest extends TestCase {
 	}
 
 
-	public function testTargetExistsException() {
+	public function testTargetExistsException(): void {
 		$this->expectException(\Exception::class);
 
 		$this->view->expects($this->once())->method('file_exists')->with('path')

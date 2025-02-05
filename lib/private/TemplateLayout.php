@@ -1,97 +1,68 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Christopher Schäpers <kondou@ts.unde.re>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Clark Tomlinson <fallen013@gmail.com>
- * @author Daniel Calviño Sánchez <danxuliu@gmail.com>
- * @author Guillaume COMPAGNON <gcompagnon@outlook.com>
- * @author Hendrik Leppelsack <hendrik@leppelsack.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Julius Haertl <jus@bitgrid.net>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Michael Gapczynski <GapczynskiM@gmail.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Nils <git@to.nilsschnabel.de>
- * @author Remco Brenninkmeijer <requist1@starmail.nl>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC;
 
 use bantu\IniGetWrapper\IniGetWrapper;
+use OC\AppFramework\Http\Request;
+use OC\Authentication\Token\IProvider;
+use OC\Files\FilenameValidator;
 use OC\Search\SearchQuery;
-use OC\Template\JSCombiner;
+use OC\Template\CSSResourceLocator;
 use OC\Template\JSConfigHelper;
+use OC\Template\JSResourceLocator;
+use OCP\App\IAppManager;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\Defaults;
 use OCP\IConfig;
 use OCP\IInitialStateService;
 use OCP\INavigationManager;
+use OCP\IRequest;
+use OCP\IURLGenerator;
 use OCP\IUserSession;
+use OCP\L10N\IFactory;
+use OCP\ServerVersion;
 use OCP\Support\Subscription\IRegistry;
 use OCP\Util;
-use Psr\Log\LoggerInterface;
 
 class TemplateLayout extends \OC_Template {
 	private static $versionHash = '';
+	/** @var string[] */
+	private static $cacheBusterCache = [];
 
-	/** @var IConfig */
-	private $config;
+	/** @var CSSResourceLocator|null */
+	public static $cssLocator = null;
 
-	/** @var IInitialStateService */
-	private $initialState;
+	/** @var JSResourceLocator|null */
+	public static $jsLocator = null;
 
-	/** @var INavigationManager */
-	private $navigationManager;
+	private IConfig $config;
+	private IAppManager $appManager;
+	private InitialStateService $initialState;
+	private INavigationManager $navigationManager;
 
 	/**
 	 * @param string $renderAs
 	 * @param string $appId application id
 	 */
 	public function __construct($renderAs, $appId = '') {
+		$this->config = \OCP\Server::get(IConfig::class);
+		$this->appManager = \OCP\Server::get(IAppManager::class);
+		$this->initialState = \OCP\Server::get(InitialStateService::class);
+		$this->navigationManager = \OCP\Server::get(INavigationManager::class);
 
-		/** @var IConfig */
-		$this->config = \OC::$server->get(IConfig::class);
-
-		/** @var IInitialStateService */
-		$this->initialState = \OC::$server->get(IInitialStateService::class);
-
-		// Add fallback theming variables if theming is disabled
-		if ($renderAs !== TemplateResponse::RENDER_AS_USER
-			|| !\OC::$server->getAppManager()->isEnabledForUser('theming')) {
+		// Add fallback theming variables if not rendered as user
+		if ($renderAs !== TemplateResponse::RENDER_AS_USER) {
 			// TODO cache generated default theme if enabled for fallback if server is erroring ?
 			Util::addStyle('theming', 'default');
 		}
 
 		// Decide which page we show
 		if ($renderAs === TemplateResponse::RENDER_AS_USER) {
-			/** @var INavigationManager */
-			$this->navigationManager = \OC::$server->get(INavigationManager::class);
-
 			parent::__construct('core', 'layout.user');
 			if (in_array(\OC_App::getCurrentApp(), ['settings','admin', 'help']) !== false) {
 				$this->assign('bodyid', 'body-settings');
@@ -100,23 +71,32 @@ class TemplateLayout extends \OC_Template {
 			}
 
 			$this->initialState->provideInitialState('core', 'active-app', $this->navigationManager->getActiveEntry());
-			$this->initialState->provideInitialState('core', 'apps', $this->navigationManager->getAll());
-			$this->initialState->provideInitialState('unified-search', 'limit-default', (int)$this->config->getAppValue('core', 'unified-search.limit-default', (string)SearchQuery::LIMIT_DEFAULT));
-			$this->initialState->provideInitialState('unified-search', 'min-search-length', (int)$this->config->getAppValue('core', 'unified-search.min-search-length', (string)2));
-			$this->initialState->provideInitialState('unified-search', 'live-search', $this->config->getAppValue('core', 'unified-search.live-search', 'yes') === 'yes');
-			Util::addScript('core', 'unified-search', 'core');
+			$this->initialState->provideInitialState('core', 'apps', array_values($this->navigationManager->getAll()));
 
+			if ($this->config->getSystemValueBool('unified_search.enabled', false) || !$this->config->getSystemValueBool('enable_non-accessible_features', true)) {
+				$this->initialState->provideInitialState('unified-search', 'limit-default', (int)$this->config->getAppValue('core', 'unified-search.limit-default', (string)SearchQuery::LIMIT_DEFAULT));
+				$this->initialState->provideInitialState('unified-search', 'min-search-length', (int)$this->config->getAppValue('core', 'unified-search.min-search-length', (string)1));
+				$this->initialState->provideInitialState('unified-search', 'live-search', $this->config->getAppValue('core', 'unified-search.live-search', 'yes') === 'yes');
+				Util::addScript('core', 'legacy-unified-search', 'core');
+			} else {
+				Util::addScript('core', 'unified-search', 'core');
+			}
 			// Set body data-theme
 			$this->assign('enabledThemes', []);
-			if (\OC::$server->getAppManager()->isEnabledForUser('theming') && class_exists('\OCA\Theming\Service\ThemesService')) {
+			if ($this->appManager->isEnabledForUser('theming') && class_exists('\OCA\Theming\Service\ThemesService')) {
 				/** @var \OCA\Theming\Service\ThemesService */
 				$themesService = \OC::$server->get(\OCA\Theming\Service\ThemesService::class);
 				$this->assign('enabledThemes', $themesService->getEnabledThemes());
 			}
 
-			// set logo link target
+			// Set logo link target
 			$logoUrl = $this->config->getSystemValueString('logo_url', '');
 			$this->assign('logoUrl', $logoUrl);
+
+			// Set default entry name
+			$defaultEntryId = $this->navigationManager->getDefaultEntryIdForUser();
+			$defaultEntry = $this->navigationManager->get($defaultEntryId);
+			$this->assign('defaultAppName', $defaultEntry['name']);
 
 			// Add navigation entry
 			$this->assign('application', '');
@@ -125,7 +105,7 @@ class TemplateLayout extends \OC_Template {
 			$navigation = $this->navigationManager->getAll();
 			$this->assign('navigation', $navigation);
 			$settingsNavigation = $this->navigationManager->getAll('settings');
-			$this->assign('settingsnavigation', $settingsNavigation);
+			$this->initialState->provideInitialState('core', 'settingsNavEntries', $settingsNavigation);
 
 			foreach ($navigation as $entry) {
 				if ($entry['active']) {
@@ -178,25 +158,52 @@ class TemplateLayout extends \OC_Template {
 			$this->assign('appid', $appId);
 			$this->assign('bodyid', 'body-public');
 
+			// Set body data-theme
+			$this->assign('enabledThemes', []);
+			if ($this->appManager->isEnabledForUser('theming') && class_exists('\OCA\Theming\Service\ThemesService')) {
+				/** @var \OCA\Theming\Service\ThemesService $themesService */
+				$themesService = \OC::$server->get(\OCA\Theming\Service\ThemesService::class);
+				$this->assign('enabledThemes', $themesService->getEnabledThemes());
+			}
+
+			// Set logo link target
+			$logoUrl = $this->config->getSystemValueString('logo_url', '');
+			$this->assign('logoUrl', $logoUrl);
+
 			/** @var IRegistry $subscription */
-			$subscription = \OC::$server->query(IRegistry::class);
+			$subscription = \OCP\Server::get(IRegistry::class);
 			$showSimpleSignup = $this->config->getSystemValueBool('simpleSignUpLink.shown', true);
 			if ($showSimpleSignup && $subscription->delegateHasValidSubscription()) {
 				$showSimpleSignup = false;
 			}
+
+			$defaultSignUpLink = 'https://nextcloud.com/signup/';
+			$signUpLink = $this->config->getSystemValueString('registration_link', $defaultSignUpLink);
+			if ($signUpLink !== $defaultSignUpLink) {
+				$showSimpleSignup = true;
+			}
+
+			if ($this->appManager->isEnabledForUser('registration')) {
+				$urlGenerator = \OCP\Server::get(IURLGenerator::class);
+				$signUpLink = $urlGenerator->getAbsoluteURL('/index.php/apps/registration/');
+			}
+
 			$this->assign('showSimpleSignUpLink', $showSimpleSignup);
+			$this->assign('signUpLink', $signUpLink);
 		} else {
 			parent::__construct('core', 'layout.base');
 		}
-		// Send the language and the locale to our layouts
-		$lang = \OC::$server->getL10NFactory()->findLanguage();
-		$locale = \OC::$server->getL10NFactory()->findLocale($lang);
+		// Send the language, locale, and direction to our layouts
+		$lang = \OC::$server->get(IFactory::class)->findLanguage();
+		$locale = \OC::$server->get(IFactory::class)->findLocale($lang);
+		$direction = \OC::$server->getL10NFactory()->getLanguageDirection($lang);
 
 		$lang = str_replace('_', '-', $lang);
 		$this->assign('language', $lang);
 		$this->assign('locale', $locale);
+		$this->assign('direction', $direction);
 
-		if (\OC::$server->getSystemConfig()->getValue('installed', false)) {
+		if ($this->config->getSystemValueBool('installed', false)) {
 			if (empty(self::$versionHash)) {
 				$v = \OC_App::getAppVersions();
 				$v['core'] = implode('.', \OCP\Util::getVersion());
@@ -210,21 +217,24 @@ class TemplateLayout extends \OC_Template {
 		// TODO: remove deprecated OC_Util injection
 		$jsFiles = self::findJavascriptFiles(array_merge(\OC_Util::$scripts, Util::getScripts()));
 		$this->assign('jsfiles', []);
-		if ($this->config->getSystemValue('installed', false) && $renderAs != TemplateResponse::RENDER_AS_ERROR) {
+		if ($this->config->getSystemValueBool('installed', false) && $renderAs != TemplateResponse::RENDER_AS_ERROR) {
 			// this is on purpose outside of the if statement below so that the initial state is prefilled (done in the getConfig() call)
 			// see https://github.com/nextcloud/server/pull/22636 for details
 			$jsConfigHelper = new JSConfigHelper(
-				\OC::$server->getL10N('lib'),
-				\OC::$server->query(Defaults::class),
-				\OC::$server->getAppManager(),
+				\OCP\Server::get(ServerVersion::class),
+				\OCP\Util::getL10N('lib'),
+				\OCP\Server::get(Defaults::class),
+				$this->appManager,
 				\OC::$server->getSession(),
 				\OC::$server->getUserSession()->getUser(),
 				$this->config,
 				\OC::$server->getGroupManager(),
 				\OC::$server->get(IniGetWrapper::class),
 				\OC::$server->getURLGenerator(),
-				\OC::$server->getCapabilitiesManager(),
-				\OC::$server->query(IInitialStateService::class)
+				\OC::$server->get(CapabilitiesManager::class),
+				\OCP\Server::get(IInitialStateService::class),
+				\OCP\Server::get(IProvider::class),
+				\OCP\Server::get(FilenameValidator::class),
 			);
 			$config = $jsConfigHelper->getConfig();
 			if (\OC::$server->getContentSecurityPolicyNonceManager()->browserSupportsCspV3()) {
@@ -236,7 +246,7 @@ class TemplateLayout extends \OC_Template {
 		foreach ($jsFiles as $info) {
 			$web = $info[1];
 			$file = $info[2];
-			$this->append('jsfiles', $web.'/'.$file . $this->getVersionHashSuffix());
+			$this->append('jsfiles', $web . '/' . $file . $this->getVersionHashSuffix());
 		}
 
 		try {
@@ -263,22 +273,29 @@ class TemplateLayout extends \OC_Template {
 
 		$this->assign('cssfiles', []);
 		$this->assign('printcssfiles', []);
-		$this->assign('versionHash', self::$versionHash);
+		$this->initialState->provideInitialState('core', 'versionHash', self::$versionHash);
 		foreach ($cssFiles as $info) {
 			$web = $info[1];
 			$file = $info[2];
 
-			if (substr($file, -strlen('print.css')) === 'print.css') {
-				$this->append('printcssfiles', $web.'/'.$file . $this->getVersionHashSuffix());
+			if (str_ends_with($file, 'print.css')) {
+				$this->append('printcssfiles', $web . '/' . $file . $this->getVersionHashSuffix());
 			} else {
 				$suffix = $this->getVersionHashSuffix($web, $file);
 
-				if (strpos($file, '?v=') == false) {
-					$this->append('cssfiles', $web.'/'.$file . $suffix);
+				if (!str_contains($file, '?v=')) {
+					$this->append('cssfiles', $web . '/' . $file . $suffix);
 				} else {
-					$this->append('cssfiles', $web.'/'.$file . '-' . substr($suffix, 3));
+					$this->append('cssfiles', $web . '/' . $file . '-' . substr($suffix, 3));
 				}
 			}
+		}
+
+		$request = \OCP\Server::get(IRequest::class);
+		if ($request->isUserAgent([Request::USER_AGENT_CLIENT_IOS, Request::USER_AGENT_SAFARI, Request::USER_AGENT_SAFARI_MOBILE])) {
+			// Prevent auto zoom with iOS but still allow user zoom
+			// On chrome (and others) this does not work (will also disable user zoom)
+			$this->assign('viewport_maximum_scale', '1.0');
 		}
 
 		$this->assign('initialStates', $this->initialState->getInitialStates());
@@ -287,44 +304,62 @@ class TemplateLayout extends \OC_Template {
 		$this->assign('id-app-navigation', $renderAs === TemplateResponse::RENDER_AS_USER ? '#app-navigation' : null);
 	}
 
-	/**
-	 * @param string $path
-	 * @param string $file
-	 * @return string
-	 */
-	protected function getVersionHashSuffix($path = false, $file = false) {
-		if ($this->config->getSystemValue('debug', false)) {
+	protected function getVersionHashSuffix(string $path = '', string $file = ''): string {
+		if ($this->config->getSystemValueBool('debug', false)) {
 			// allows chrome workspace mapping in debug mode
-			return "";
-		}
-		$themingSuffix = '';
-		$v = [];
-
-		if ($this->config->getSystemValue('installed', false)) {
-			if (\OC::$server->getAppManager()->isInstalled('theming')) {
-				$themingSuffix = '-' . $this->config->getAppValue('theming', 'cachebuster', '0');
-			}
-			$v = \OC_App::getAppVersions();
+			return '';
 		}
 
-		// Try the webroot path for a match
-		if ($path !== false && $path !== '') {
-			$appName = $this->getAppNamefromPath($path);
-			if (array_key_exists($appName, $v)) {
-				$appVersion = $v[$appName];
-				return '?v=' . substr(md5($appVersion), 0, 8) . $themingSuffix;
-			}
-		}
-		// fallback to the file path instead
-		if ($file !== false && $file !== '') {
-			$appName = $this->getAppNamefromPath($file);
-			if (array_key_exists($appName, $v)) {
-				$appVersion = $v[$appName];
-				return '?v=' . substr(md5($appVersion), 0, 8) . $themingSuffix;
-			}
+		if ($this->config->getSystemValueBool('installed', false) === false) {
+			// if not installed just return the version hash
+			return '?v=' . self::$versionHash;
 		}
 
-		return '?v=' . self::$versionHash . $themingSuffix;
+		$hash = false;
+		// Try the web-root first
+		if ($path !== '') {
+			$hash = $this->getVersionHashByPath($path);
+		}
+		// If not found try the file
+		if ($hash === false && $file !== '') {
+			$hash = $this->getVersionHashByPath($file);
+		}
+		// As a last resort we use the server version hash
+		if ($hash === false) {
+			$hash = self::$versionHash;
+		}
+
+		// The theming app is force-enabled thus the cache buster is always available
+		$themingSuffix = '-' . $this->config->getAppValue('theming', 'cachebuster', '0');
+
+		return '?v=' . $hash . $themingSuffix;
+	}
+
+	private function getVersionHashByPath(string $path): string|false {
+		if (array_key_exists($path, self::$cacheBusterCache) === false) {
+			// Not yet cached, so lets find the cache buster string
+			$appId = $this->getAppNamefromPath($path);
+			if ($appId === false || $appId === null) {
+				// No app Id could be guessed
+				return false;
+			}
+
+			if ($appId === 'core') {
+				// core is not a real app but the server itself
+				$hash = self::$versionHash;
+			} else {
+				$appVersion = $this->appManager->getAppVersion($appId);
+				// For shipped apps the app version is not a single source of truth, we rather also need to consider the Nextcloud version
+				if ($this->appManager->isShipped($appId)) {
+					$appVersion .= '-' . self::$versionHash;
+				}
+
+				$hash = substr(md5($appVersion), 0, 8);
+			}
+			self::$cacheBusterCache[$path] = $hash;
+		}
+
+		return self::$cacheBusterCache[$path];
 	}
 
 	/**
@@ -332,22 +367,16 @@ class TemplateLayout extends \OC_Template {
 	 * @return array
 	 */
 	public static function findStylesheetFiles($styles, $compileScss = true) {
-		// Read the selected theme from the config file
-		$theme = \OC_Util::getTheme();
-
-		$locator = new \OC\Template\CSSResourceLocator(
-			\OC::$server->get(LoggerInterface::class),
-			$theme,
-			[ \OC::$SERVERROOT => \OC::$WEBROOT ],
-			[ \OC::$SERVERROOT => \OC::$WEBROOT ],
-		);
-		$locator->find($styles);
-		return $locator->getResources();
+		if (!self::$cssLocator) {
+			self::$cssLocator = \OCP\Server::get(CSSResourceLocator::class);
+		}
+		self::$cssLocator->find($styles);
+		return self::$cssLocator->getResources();
 	}
 
 	/**
 	 * @param string $path
-	 * @return string|boolean
+	 * @return string|false
 	 */
 	public function getAppNamefromPath($path) {
 		if ($path !== '' && is_string($path)) {
@@ -355,6 +384,8 @@ class TemplateLayout extends \OC_Template {
 			if ($pathParts[0] === 'css') {
 				// This is a scss request
 				return $pathParts[1];
+			} elseif ($pathParts[0] === 'core') {
+				return 'core';
 			}
 			return end($pathParts);
 		}
@@ -366,18 +397,11 @@ class TemplateLayout extends \OC_Template {
 	 * @return array
 	 */
 	public static function findJavascriptFiles($scripts) {
-		// Read the selected theme from the config file
-		$theme = \OC_Util::getTheme();
-
-		$locator = new \OC\Template\JSResourceLocator(
-			\OC::$server->get(LoggerInterface::class),
-			$theme,
-			[ \OC::$SERVERROOT => \OC::$WEBROOT ],
-			[ \OC::$SERVERROOT => \OC::$WEBROOT ],
-			\OC::$server->query(JSCombiner::class)
-			);
-		$locator->find($scripts);
-		return $locator->getResources();
+		if (!self::$jsLocator) {
+			self::$jsLocator = \OCP\Server::get(JSResourceLocator::class);
+		}
+		self::$jsLocator->find($scripts);
+		return self::$jsLocator->getResources();
 	}
 
 	/**

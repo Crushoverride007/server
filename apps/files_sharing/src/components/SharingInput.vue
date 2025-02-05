@@ -1,74 +1,57 @@
 <!--
-  - @copyright Copyright (c) 2019 John Molakvoæ <skjnldsv@protonmail.com>
-  -
-  - @author John Molakvoæ <skjnldsv@protonmail.com>
-  -
-  - @license GNU AGPL version 3 or any later version
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU Affero General Public License as
-  - published by the Free Software Foundation, either version 3 of the
-  - License, or (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  - GNU Affero General Public License for more details.
-  -
-  - You should have received a copy of the GNU Affero General Public License
-  - along with this program. If not, see <http://www.gnu.org/licenses/>.
-  -
-  -->
+  - SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 
 <template>
-	<NcMultiselect ref="multiselect"
-		class="sharing-input"
-		:clear-on-select="true"
-		:disabled="!canReshare"
-		:hide-selected="true"
-		:internal-search="false"
-		:loading="loading"
-		:options="options"
-		:placeholder="inputPlaceholder"
-		:preselect-first="true"
-		:preserve-search="true"
-		:searchable="true"
-		:user-select="true"
-		open-direction="below"
-		label="displayName"
-		track-by="id"
-		@search-change="asyncFind"
-		@select="addShare">
-		<template #noOptions>
-			{{ t('files_sharing', 'No recommendations. Start typing.') }}
-		</template>
-		<template #noResult>
-			{{ noResultText }}
-		</template>
-	</NcMultiselect>
+	<div class="sharing-search">
+		<label class="hidden-visually" for="sharing-search-input">
+			{{ isExternal ? t('files_sharing', 'Enter external recipients')
+				: t('files_sharing', 'Search for internal recipients') }}
+		</label>
+		<NcSelect ref="select"
+			v-model="value"
+			input-id="sharing-search-input"
+			class="sharing-search__input"
+			:disabled="!canReshare"
+			:loading="loading"
+			:filterable="false"
+			:placeholder="inputPlaceholder"
+			:clear-search-on-blur="() => false"
+			:user-select="true"
+			:options="options"
+			:label-outside="true"
+			@search="asyncFind"
+			@option:selected="onSelected">
+			<template #no-options="{ search }">
+				{{ search ? noResultText : placeholder }}
+			</template>
+		</NcSelect>
+	</div>
 </template>
 
 <script>
 import { generateOcsUrl } from '@nextcloud/router'
 import { getCurrentUser } from '@nextcloud/auth'
+import { getCapabilities } from '@nextcloud/capabilities'
 import axios from '@nextcloud/axios'
 import debounce from 'debounce'
-import NcMultiselect from '@nextcloud/vue/dist/Components/NcMultiselect'
+import NcSelect from '@nextcloud/vue/dist/Components/NcSelect.js'
 
-import Config from '../services/ConfigService'
-import GeneratePassword from '../utils/GeneratePassword'
-import Share from '../models/Share'
-import ShareRequests from '../mixins/ShareRequests'
-import ShareTypes from '../mixins/ShareTypes'
+import Config from '../services/ConfigService.ts'
+import Share from '../models/Share.ts'
+import ShareRequests from '../mixins/ShareRequests.js'
+import ShareDetails from '../mixins/ShareDetails.js'
+import { ShareType } from '@nextcloud/sharing'
 
 export default {
 	name: 'SharingInput',
 
 	components: {
-		NcMultiselect,
+		NcSelect,
 	},
 
-	mixins: [ShareTypes, ShareRequests],
+	mixins: [ShareRequests, ShareDetails],
 
 	props: {
 		shares: {
@@ -94,6 +77,14 @@ export default {
 			type: Boolean,
 			required: true,
 		},
+		isExternal: {
+			type: Boolean,
+			default: false,
+		},
+		placeholder: {
+			type: String,
+			default: '',
+		},
 	},
 
 	data() {
@@ -104,6 +95,7 @@ export default {
 			recommendations: [],
 			ShareSearch: OCA.Sharing.ShareSearch.state,
 			suggestions: [],
+			value: null,
 		}
 	},
 
@@ -125,6 +117,10 @@ export default {
 			if (!this.canReshare) {
 				return t('files_sharing', 'Resharing is not allowed')
 			}
+			if (this.placeholder) {
+				return this.placeholder
+			}
+
 			// We can always search with email addresses for users too
 			if (!allowRemoteSharing) {
 				return t('files_sharing', 'Name or email …')
@@ -157,7 +153,12 @@ export default {
 	},
 
 	methods: {
-		async asyncFind(query, id) {
+		onSelected(option) {
+			this.value = null // Reset selected option
+			this.openSharingDetails(option)
+		},
+
+		async asyncFind(query) {
 			// save current query to check if we display
 			// recommendations or search results
 			this.query = query.trim()
@@ -173,28 +174,36 @@ export default {
 		 * Get suggestions
 		 *
 		 * @param {string} search the search query
-		 * @param {boolean} [lookup=false] search on lookup server
+		 * @param {boolean} [lookup] search on lookup server
 		 */
 		async getSuggestions(search, lookup = false) {
 			this.loading = true
 
-			if (OC.getCapabilities().files_sharing.sharee.query_lookup_default === true) {
+			if (getCapabilities().files_sharing.sharee.query_lookup_default === true) {
 				lookup = true
 			}
 
-			const shareType = [
-				this.SHARE_TYPES.SHARE_TYPE_USER,
-				this.SHARE_TYPES.SHARE_TYPE_GROUP,
-				this.SHARE_TYPES.SHARE_TYPE_REMOTE,
-				this.SHARE_TYPES.SHARE_TYPE_REMOTE_GROUP,
-				this.SHARE_TYPES.SHARE_TYPE_CIRCLE,
-				this.SHARE_TYPES.SHARE_TYPE_ROOM,
-				this.SHARE_TYPES.SHARE_TYPE_GUEST,
-				this.SHARE_TYPES.SHARE_TYPE_DECK,
-			]
+			let shareType = []
 
-			if (OC.getCapabilities().files_sharing.public.enabled === true) {
-				shareType.push(this.SHARE_TYPES.SHARE_TYPE_EMAIL)
+			if (this.isExternal) {
+				shareType.push(ShareType.Remote)
+				shareType.push(ShareType.RemoteGroup)
+			} else {
+				// Merge shareType array
+				shareType = shareType.concat([
+					ShareType.User,
+					ShareType.Group,
+					ShareType.Team,
+					ShareType.Room,
+					ShareType.Guest,
+					ShareType.Deck,
+					ShareType.ScienceMesh,
+				])
+
+			}
+
+			if (getCapabilities().files_sharing.public.enabled === true && this.isExternal) {
+				shareType.push(ShareType.Email)
 			}
 
 			let request = null
@@ -331,7 +340,7 @@ export default {
 					return arr
 				}
 				try {
-					if (share.value.shareType === this.SHARE_TYPES.SHARE_TYPE_USER) {
+					if (share.value.shareType === ShareType.User) {
 						// filter out current user
 						if (share.value.shareWith === getCurrentUser().uid) {
 							return arr
@@ -344,7 +353,7 @@ export default {
 					}
 
 					// filter out existing mail shares
-					if (share.value.shareType === this.SHARE_TYPES.SHARE_TYPE_EMAIL) {
+					if (share.value.shareType === ShareType.Email) {
 						const emails = this.linkShares.map(elem => elem.shareWith)
 						if (emails.indexOf(share.value.shareWith.trim()) !== -1) {
 							return arr
@@ -382,26 +391,48 @@ export default {
 		 */
 		shareTypeToIcon(type) {
 			switch (type) {
-			case this.SHARE_TYPES.SHARE_TYPE_GUEST:
+			case ShareType.Guest:
 				// default is a user, other icons are here to differentiate
 				// themselves from it, so let's not display the user icon
-				// case this.SHARE_TYPES.SHARE_TYPE_REMOTE:
-				// case this.SHARE_TYPES.SHARE_TYPE_USER:
-				return 'icon-user'
-			case this.SHARE_TYPES.SHARE_TYPE_REMOTE_GROUP:
-			case this.SHARE_TYPES.SHARE_TYPE_GROUP:
-				return 'icon-group'
-			case this.SHARE_TYPES.SHARE_TYPE_EMAIL:
-				return 'icon-mail'
-			case this.SHARE_TYPES.SHARE_TYPE_CIRCLE:
-				return 'icon-circle'
-			case this.SHARE_TYPES.SHARE_TYPE_ROOM:
-				return 'icon-room'
-			case this.SHARE_TYPES.SHARE_TYPE_DECK:
-				return 'icon-deck'
-
+				// case ShareType.Remote:
+				// case ShareType.User:
+				return {
+					icon: 'icon-user',
+					iconTitle: t('files_sharing', 'Guest'),
+				}
+			case ShareType.RemoteGroup:
+			case ShareType.Group:
+				return {
+					icon: 'icon-group',
+					iconTitle: t('files_sharing', 'Group'),
+				}
+			case ShareType.Email:
+				return {
+					icon: 'icon-mail',
+					iconTitle: t('files_sharing', 'Email'),
+				}
+			case ShareType.Team:
+				return {
+					icon: 'icon-teams',
+					iconTitle: t('files_sharing', 'Team'),
+				}
+			case ShareType.Room:
+				return {
+					icon: 'icon-room',
+					iconTitle: t('files_sharing', 'Talk conversation'),
+				}
+			case ShareType.Deck:
+				return {
+					icon: 'icon-deck',
+					iconTitle: t('files_sharing', 'Deck board'),
+				}
+			case ShareType.Sciencemesh:
+				return {
+					icon: 'icon-sciencemesh',
+					iconTitle: t('files_sharing', 'ScienceMesh'),
+				}
 			default:
-				return ''
+				return {}
 			}
 		},
 
@@ -412,108 +443,28 @@ export default {
 		 * @return {object}
 		 */
 		formatForMultiselect(result) {
-			let subtitle
-			if (result.value.shareType === this.SHARE_TYPES.SHARE_TYPE_USER && this.config.shouldAlwaysShowUnique) {
-				subtitle = result.shareWithDisplayNameUnique ?? ''
-			} else if ((result.value.shareType === this.SHARE_TYPES.SHARE_TYPE_REMOTE
-					|| result.value.shareType === this.SHARE_TYPES.SHARE_TYPE_REMOTE_GROUP
+			let subname
+			if (result.value.shareType === ShareType.User && this.config.shouldAlwaysShowUnique) {
+				subname = result.shareWithDisplayNameUnique ?? ''
+			} else if ((result.value.shareType === ShareType.Remote
+					|| result.value.shareType === ShareType.RemoteGroup
 			) && result.value.server) {
-				subtitle = t('files_sharing', 'on {server}', { server: result.value.server })
-			} else if (result.value.shareType === this.SHARE_TYPES.SHARE_TYPE_EMAIL) {
-				subtitle = result.value.shareWith
+				subname = t('files_sharing', 'on {server}', { server: result.value.server })
+			} else if (result.value.shareType === ShareType.Email) {
+				subname = result.value.shareWith
 			} else {
-				subtitle = result.shareWithDescription ?? ''
+				subname = result.shareWithDescription ?? ''
 			}
 
 			return {
-				id: `${result.value.shareType}-${result.value.shareWith}`,
 				shareWith: result.value.shareWith,
 				shareType: result.value.shareType,
 				user: result.uuid || result.value.shareWith,
-				isNoUser: result.value.shareType !== this.SHARE_TYPES.SHARE_TYPE_USER,
+				isNoUser: result.value.shareType !== ShareType.User,
 				displayName: result.name || result.label,
-				subtitle,
+				subname,
 				shareWithDisplayNameUnique: result.shareWithDisplayNameUnique || '',
-				icon: this.shareTypeToIcon(result.value.shareType),
-			}
-		},
-
-		/**
-		 * Process the new share request
-		 *
-		 * @param {object} value the multiselect option
-		 */
-		async addShare(value) {
-			if (value.lookup) {
-				await this.getSuggestions(this.query, true)
-
-				// focus the input again
-				this.$nextTick(() => {
-					this.$refs.multiselect.$el.querySelector('.multiselect__input').focus()
-				})
-				return true
-			}
-
-			// handle externalResults from OCA.Sharing.ShareSearch
-			if (value.handler) {
-				const share = await value.handler(this)
-				this.$emit('add:share', new Share(share))
-				return true
-			}
-
-			this.loading = true
-			console.debug('Adding a new share from the input for', value)
-			try {
-				let password = null
-
-				if (this.config.enforcePasswordForPublicLink
-					&& value.shareType === this.SHARE_TYPES.SHARE_TYPE_EMAIL) {
-					password = await GeneratePassword()
-				}
-
-				const path = (this.fileInfo.path + '/' + this.fileInfo.name).replace('//', '/')
-				const share = await this.createShare({
-					path,
-					shareType: value.shareType,
-					shareWith: value.shareWith,
-					password,
-					permissions: this.fileInfo.sharePermissions & OC.getCapabilities().files_sharing.default_permissions,
-					attributes: JSON.stringify(this.fileInfo.shareAttributes),
-				})
-
-				// If we had a password, we need to show it to the user as it was generated
-				if (password) {
-					share.newPassword = password
-					// Wait for the newly added share
-					const component = await new Promise(resolve => {
-						this.$emit('add:share', share, resolve)
-					})
-
-					// open the menu on the
-					// freshly created share component
-					component.open = true
-				} else {
-					// Else we just add it normally
-					this.$emit('add:share', share)
-				}
-
-				// reset the search string when done
-				// FIXME: https://github.com/shentao/vue-multiselect/issues/633
-				if (this.$refs.multiselect?.$refs?.VueMultiselect?.search) {
-					this.$refs.multiselect.$refs.VueMultiselect.search = ''
-				}
-
-				await this.getRecommendations()
-			} catch (error) {
-				// focus back if any error
-				const input = this.$refs.multiselect.$el.querySelector('input')
-				if (input) {
-					input.focus()
-				}
-				this.query = value.shareWith
-				console.error('Error while adding new share', error)
-			} finally {
-				this.loading = false
+				...this.shareTypeToIcon(result.value.shareType),
 			}
 		},
 	},
@@ -521,21 +472,31 @@ export default {
 </script>
 
 <style lang="scss">
-.sharing-input {
-	width: 100%;
-	margin: 10px 0;
+.sharing-search {
+	display: flex;
+	flex-direction: column;
+	margin-bottom: 4px;
 
+	label[for="sharing-search-input"] {
+		margin-bottom: 2px;
+	}
+
+	&__input {
+		width: 100%;
+		margin: 10px 0;
+	}
+}
+
+.vs__dropdown-menu {
 	// properly style the lookup entry
-	.multiselect__option {
-		span[lookup] {
-			.avatardiv {
-				background-image: var(--icon-search-white);
-				background-repeat: no-repeat;
-				background-position: center;
-				background-color: var(--color-text-maxcontrast) !important;
-				div {
-					display: none;
-				}
+	span[lookup] {
+		.avatardiv {
+			background-image: var(--icon-search-white);
+			background-repeat: no-repeat;
+			background-position: center;
+			background-color: var(--color-text-maxcontrast) !important;
+			.avatardiv__initials-wrapper {
+				display: none;
 			}
 		}
 	}

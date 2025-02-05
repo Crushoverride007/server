@@ -1,22 +1,23 @@
 /**
- * Copyright (c) 2014 Vincent Petry <pvince81@owncloud.com>
- *
- * This file is licensed under the Affero General Public License version 3
- * or later.
- *
- * See the COPYING-README file.
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 describe('OC.L10N tests', function() {
 	var TEST_APP = 'jsunittestapp';
 
 	beforeEach(function() {
-		OC.appswebroots[TEST_APP] = OC.getRootPath() + '/apps3/jsunittestapp';
+		window._oc_appswebroots[TEST_APP] = OC.getRootPath() + '/apps3/jsunittestapp';
+
+		window.OC = window.OC ?? {}
+		window.OC.appswebroots = window.OC.appswebroots || {}
+		window.OC.appswebroots[TEST_APP] = OC.getRootPath() + '/apps3/jsunittestapp'
 	});
 	afterEach(function() {
 		OC.L10N._unregister(TEST_APP);
-		delete OC.appswebroots[TEST_APP];
+		delete window._oc_appswebroots[TEST_APP];
+		delete window.OC.appswebroots[TEST_APP];
 	});
 
 	describe('text translation', function() {
@@ -110,14 +111,18 @@ describe('OC.L10N tests', function() {
 		});
 	});
 	describe('async loading of translations', function() {
+		afterEach(() => {
+			document.documentElement.removeAttribute('data-locale')
+		})
 		it('loads bundle for given app and calls callback', function(done) {
-			var localeStub = sinon.stub(OC, 'getLocale').returns('zh_CN');
+			document.documentElement.setAttribute('data-locale', 'zh_CN')
 			var callbackStub = sinon.stub();
 			var promiseStub = sinon.stub();
 			var loading = OC.L10N.load(TEST_APP, callbackStub);
 			expect(callbackStub.notCalled).toEqual(true);
 			var req = fakeServer.requests[0];
 
+			console.warn('fff-', window.OC.appswebroots)
 			loading
 				.then(promiseStub)
 				.then(function() {
@@ -129,9 +134,9 @@ describe('OC.L10N tests', function() {
 					expect(callbackStub.calledOnce).toEqual(true);
 					expect(promiseStub.calledOnce).toEqual(true);
 					expect(t(TEST_APP, 'Hello world!')).toEqual('你好世界!');
-					localeStub.restore();
 				})
-				.then(done);
+				.then(done)
+				.catch(e => expect(e).toBe('No error expected!'));
 
 			expect(promiseStub.notCalled).toEqual(true);
 			req.respond(

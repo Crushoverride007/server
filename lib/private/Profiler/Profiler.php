@@ -3,35 +3,18 @@
 declare(strict_types = 1);
 
 /**
- * @copyright 2021 Carl Schwan <carl@carlschwan.eu>
- *
- * @author Carl Schwan <carl@carlschwan.eu>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OC\Profiler;
 
 use OC\AppFramework\Http\Request;
+use OC\SystemConfig;
 use OCP\AppFramework\Http\Response;
 use OCP\DataCollector\IDataCollector;
-use OCP\Profiler\IProfiler;
 use OCP\Profiler\IProfile;
-use OC\SystemConfig;
+use OCP\Profiler\IProfiler;
 
 class Profiler implements IProfiler {
 	/** @var array<string, IDataCollector> */
@@ -44,7 +27,7 @@ class Profiler implements IProfiler {
 	public function __construct(SystemConfig $config) {
 		$this->enabled = $config->getValue('profiler', false);
 		if ($this->enabled) {
-			$this->storage = new FileProfilerStorage($config->getValue('datadirectory', \OC::$SERVERROOT . '/data') . '/profiler');
+			$this->storage = new FileProfilerStorage($config->getValue('datadirectory', \OC::$SERVERROOT . '/data') . '/__profiler');
 		}
 	}
 
@@ -61,11 +44,19 @@ class Profiler implements IProfiler {
 	}
 
 	public function loadProfile(string $token): ?IProfile {
-		return $this->storage->read($token);
+		if ($this->storage) {
+			return $this->storage->read($token);
+		} else {
+			return null;
+		}
 	}
 
 	public function saveProfile(IProfile $profile): bool {
-		return $this->storage->write($profile);
+		if ($this->storage) {
+			return $this->storage->write($profile);
+		} else {
+			return false;
+		}
 	}
 
 	public function collect(Request $request, Response $response): IProfile {
@@ -87,8 +78,12 @@ class Profiler implements IProfiler {
 	 * @return array[]
 	 */
 	public function find(?string $url, ?int $limit, ?string $method, ?int $start, ?int $end,
-						 string $statusCode = null): array {
-		return $this->storage->find($url, $limit, $method, $start, $end, $statusCode);
+		?string $statusCode = null): array {
+		if ($this->storage) {
+			return $this->storage->find($url, $limit, $method, $start, $end, $statusCode);
+		} else {
+			return [];
+		}
 	}
 
 	public function dataProviders(): array {

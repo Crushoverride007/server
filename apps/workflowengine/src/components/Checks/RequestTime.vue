@@ -1,3 +1,7 @@
+<!--
+  - SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 <template>
 	<div class="timeslot">
 		<input v-model="newValue.startTime"
@@ -12,23 +16,24 @@
 		<p v-if="!valid" class="invalid-hint">
 			{{ t('workflowengine', 'Please enter a valid time span') }}
 		</p>
-		<NcMultiselect v-show="valid"
+		<NcSelect v-show="valid"
 			v-model="newValue.timezone"
+			:clearable="false"
 			:options="timezones"
 			@input="update" />
 	</div>
 </template>
 
 <script>
-import NcMultiselect from '@nextcloud/vue/dist/Components/NcMultiselect'
+import NcSelect from '@nextcloud/vue/dist/Components/NcSelect.js'
 import moment from 'moment-timezone'
-import valueMixin from '../../mixins/valueMixin'
+import valueMixin from '../../mixins/valueMixin.js'
 
 const zones = moment.tz.names()
 export default {
 	name: 'RequestTime',
 	components: {
-		NcMultiselect,
+		NcSelect,
 	},
 	mixins: [
 		valueMixin,
@@ -104,7 +109,7 @@ export default {
 			margin-bottom: 5px;
 		}
 
-		.multiselect::v-deep .multiselect__tags:not(:hover):not(:focus):not(:active) {
+		.multiselect:deep(.multiselect__tags:not(:hover):not(:focus):not(:active)) {
 			border: 1px solid transparent;
 		}
 
@@ -112,9 +117,10 @@ export default {
 			width: 50%;
 			margin: 0;
 			margin-bottom: 5px;
+			min-height: 48px;
 
 			&.timeslot--start {
-				margin-right: 5px;
+				margin-inline-end: 5px;
 				width: calc(50% - 5px);
 			}
 		}

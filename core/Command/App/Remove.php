@@ -1,28 +1,10 @@
 <?php
+
+declare(strict_types=1);
+
 /**
- * @copyright Copyright (c) 2018, Patrik Kernstock <info@pkern.at>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Patrik Kernstock <info@pkern.at>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Core\Command\App;
 
@@ -39,18 +21,15 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
 
 class Remove extends Command implements CompletionAwareInterface {
-	protected IAppManager $manager;
-	private Installer $installer;
-	private LoggerInterface $logger;
-
-	public function __construct(IAppManager $manager, Installer $installer, LoggerInterface $logger) {
+	public function __construct(
+		protected IAppManager $manager,
+		private Installer $installer,
+		private LoggerInterface $logger,
+	) {
 		parent::__construct();
-		$this->manager = $manager;
-		$this->installer = $installer;
-		$this->logger = $logger;
 	}
 
-	protected function configure() {
+	protected function configure(): void {
 		$this
 			->setName('app:remove')
 			->setDescription('remove an app')
@@ -70,9 +49,9 @@ class Remove extends Command implements CompletionAwareInterface {
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$appId = $input->getArgument('app-id');
 
-		// Check if the app is installed
-		if (!\OC_App::getAppPath($appId)) {
-			$output->writeln($appId . ' is not installed');
+		// Check if the app is enabled
+		if (!$this->manager->isInstalled($appId)) {
+			$output->writeln($appId . ' is not enabled');
 			return 1;
 		}
 
@@ -116,7 +95,7 @@ class Remove extends Command implements CompletionAwareInterface {
 			return 1;
 		}
 
-		$appVersion = \OC_App::getAppVersion($appId);
+		$appVersion = $this->manager->getAppVersion($appId);
 		$output->writeln($appId . ' ' . $appVersion . ' removed');
 
 		return 0;
@@ -127,7 +106,7 @@ class Remove extends Command implements CompletionAwareInterface {
 	 * @param CompletionContext $context
 	 * @return string[]
 	 */
-	public function completeOptionValues($optionName, CompletionContext $context) {
+	public function completeOptionValues($optionName, CompletionContext $context): array {
 		return [];
 	}
 
@@ -136,9 +115,9 @@ class Remove extends Command implements CompletionAwareInterface {
 	 * @param CompletionContext $context
 	 * @return string[]
 	 */
-	public function completeArgumentValues($argumentName, CompletionContext $context) {
+	public function completeArgumentValues($argumentName, CompletionContext $context): array {
 		if ($argumentName === 'app-id') {
-			return \OC_App::getAllApps();
+			return $this->manager->getInstalledApps();
 		}
 		return [];
 	}

@@ -1,22 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Lukas Reschke <lukas@statuscode.ch>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\App\AppStore\Fetcher;
@@ -1871,8 +1856,8 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 			->willReturn('stable');
 	}
 
-	public function testGetWithFilter() {
-		$this->config->method('getSystemValue')
+	public function testGetWithFilter(): void {
+		$this->config->method('getSystemValueString')
 			->willReturnCallback(function ($key, $default) {
 				if ($key === 'version') {
 					return '11.0.0.2';
@@ -1884,8 +1869,7 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 			});
 		$this->config
 			->method('getSystemValueBool')
-			->with('appstoreenabled', true)
-			->willReturn(true);
+			->willReturnArgument(1);
 
 		$file = $this->createMock(ISimpleFile::class);
 		$folder = $this->createMock(ISimpleFolder::class);
@@ -1955,9 +1939,9 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 		$this->assertEquals(self::$expectedResponse['data'], $this->fetcher->get());
 	}
 
-	public function testAppstoreDisabled() {
+	public function testAppstoreDisabled(): void {
 		$this->config
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->willReturnCallback(function ($var, $default) {
 				if ($var === 'version') {
 					return '11.0.0.2';
@@ -1966,8 +1950,14 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 			});
 		$this->config
 			->method('getSystemValueBool')
-			->with('appstoreenabled', true)
-			->willReturn(false);
+			->willReturnCallback(function ($var, $default) {
+				if ($var === 'has_internet_connection') {
+					return true;
+				} elseif ($var === 'appstoreenabled') {
+					return false;
+				}
+				return $default;
+			});
 		$this->appData
 			->expects($this->never())
 			->method('getFolder');
@@ -1976,9 +1966,9 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 	}
 
 
-	public function testNoInternet() {
+	public function testNoInternet(): void {
 		$this->config
-			->method('getSystemValue')
+			->method('getSystemValueString')
 			->willReturnCallback(function ($var, $default) {
 				if ($var === 'has_internet_connection') {
 					return false;
@@ -1989,8 +1979,14 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 			});
 		$this->config
 			->method('getSystemValueBool')
-			->with('appstoreenabled', true)
-			->willReturn(true);
+			->willReturnCallback(function ($var, $default) {
+				if ($var === 'has_internet_connection') {
+					return false;
+				} elseif ($var === 'appstoreenabled') {
+					return true;
+				}
+				return $default;
+			});
 		$this->appData
 			->expects($this->never())
 			->method('getFolder');
@@ -1998,8 +1994,8 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 		$this->assertEquals([], $this->fetcher->get());
 	}
 
-	public function testSetVersion() {
-		$this->config->method('getSystemValue')
+	public function testSetVersion(): void {
+		$this->config->method('getSystemValueString')
 			->willReturnCallback(function ($key, $default) {
 				if ($key === 'version') {
 					return '10.0.7.2';
@@ -2011,8 +2007,7 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 			});
 		$this->config
 			->method('getSystemValueBool')
-			->with('appstoreenabled', true)
-			->willReturn(true);
+			->willReturnArgument(1);
 
 		$file = $this->createMock(ISimpleFile::class);
 		$folder = $this->createMock(ISimpleFolder::class);
@@ -2083,23 +2078,32 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 		$this->assertEquals(self::$expectedResponse['data'], $this->fetcher->get());
 	}
 
-	public function testGetAppsAllowlist() {
-		$this->config->method('getSystemValue')
+	public function testGetAppsAllowlist(): void {
+		$this->config->method('getSystemValueString')
 			->willReturnCallback(function ($key, $default) {
 				if ($key === 'version') {
 					return '11.0.0.2';
-				} elseif ($key === 'appstoreurl' && $default === 'https://apps.nextcloud.com/api/v1') {
-					return 'https://custom.appsstore.endpoint/api/v1';
-				} elseif ($key === 'appsallowlist') {
-					return ['contacts'];
 				} else {
 					return $default;
 				}
 			});
+		$this->config->method('getSystemValue')
+			->willReturnCallback(function ($key, $default) {
+				if ($key === 'appsallowlist') {
+					return ['contacts'];
+				}
+				return $default;
+			});
+		$this->config->method('getAppValue')
+			->willReturnCallback(function ($app, $key, $default) {
+				if ($app === 'support' && $key === 'subscription_key') {
+					return 'subscription-key';
+				}
+				return $default;
+			});
 		$this->config
 			->method('getSystemValueBool')
-			->with('appstoreenabled', true)
-			->willReturn(true);
+			->willReturnArgument(1);
 
 		$file = $this->createMock(ISimpleFile::class);
 		$folder = $this->createMock(ISimpleFolder::class);
@@ -2127,7 +2131,12 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 		$client
 			->expects($this->once())
 			->method('get')
-			->with('https://custom.appsstore.endpoint/api/v1/apps.json')
+			->with('https://apps.nextcloud.com/api/v1/apps.json', [
+				'timeout' => 60,
+				'headers' => [
+					'X-NC-Subscription-Key' => 'subscription-key',
+				],
+			])
 			->willReturn($response);
 		$response
 			->expects($this->once())
@@ -2143,6 +2152,88 @@ EJL3BaQAQaASSsvFrcozYxrQG4VzEg==
 
 		$this->registry
 			->expects($this->exactly(2))
+			->method('delegateHasValidSubscription')
+			->willReturn(true);
+
+		$file
+			->expects($this->once())
+			->method('putContent');
+		$file
+			->method('getContent')
+			->willReturn(json_encode(self::$expectedResponse));
+
+		$apps = array_values($this->fetcher->get());
+		$this->assertEquals(count($apps), 1);
+		$this->assertEquals($apps[0]['id'], 'contacts');
+	}
+
+	public function testGetAppsAllowlistCustomAppstore(): void {
+		$this->config->method('getSystemValueString')
+			->willReturnCallback(function ($key, $default) {
+				if ($key === 'version') {
+					return '11.0.0.2';
+				} elseif ($key === 'appstoreurl' && $default === 'https://apps.nextcloud.com/api/v1') {
+					return 'https://custom.appsstore.endpoint/api/v1';
+				} else {
+					return $default;
+				}
+			});
+		$this->config->method('getSystemValue')
+			->willReturnCallback(function ($key, $default) {
+				if ($key === 'appsallowlist') {
+					return ['contacts'];
+				} else {
+					return $default;
+				}
+			});
+		$this->config
+			->method('getSystemValueBool')
+			->willReturnArgument(1);
+
+		$file = $this->createMock(ISimpleFile::class);
+		$folder = $this->createMock(ISimpleFolder::class);
+		$folder
+			->expects($this->once())
+			->method('getFile')
+			->with('apps.json')
+			->willThrowException(new NotFoundException());
+		$folder
+			->expects($this->once())
+			->method('newFile')
+			->with('apps.json')
+			->willReturn($file);
+		$this->appData
+			->expects($this->once())
+			->method('getFolder')
+			->with('/')
+			->willReturn($folder);
+		$client = $this->createMock(IClient::class);
+		$this->clientService
+			->expects($this->once())
+			->method('newClient')
+			->willReturn($client);
+		$response = $this->createMock(IResponse::class);
+		$client
+			->expects($this->once())
+			->method('get')
+			->with('https://custom.appsstore.endpoint/api/v1/apps.json', [
+				'timeout' => 60,
+			])
+			->willReturn($response);
+		$response
+			->expects($this->once())
+			->method('getBody')
+			->willReturn(self::$responseJson);
+		$response->method('getHeader')
+			->with($this->equalTo('ETag'))
+			->willReturn('"myETag"');
+		$this->timeFactory
+			->expects($this->once())
+			->method('getTime')
+			->willReturn(1234);
+
+		$this->registry
+			->expects($this->exactly(1))
 			->method('delegateHasValidSubscription')
 			->willReturn(true);
 

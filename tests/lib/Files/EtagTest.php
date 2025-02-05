@@ -1,16 +1,15 @@
 <?php
 /**
- * Copyright (c) 2012 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\Files;
 
 use OC\Files\Filesystem;
-use OCP\EventDispatcher\IEventDispatcher;
 use OCA\Files_Sharing\AppInfo\Application;
+use OCP\EventDispatcher\IEventDispatcher;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -41,7 +40,7 @@ class EtagTest extends \Test\TestCase {
 		\OC\Share\Share::registerBackend('folder', 'OCA\Files_Sharing\ShareBackend\Folder', 'file');
 
 		$config = \OC::$server->getConfig();
-		$this->datadir = $config->getSystemValue('datadirectory');
+		$this->datadir = $config->getSystemValueString('datadirectory');
 		$this->tmpDir = \OC::$server->getTempManager()->getTemporaryFolder();
 		$config->setSystemValue('datadirectory', $this->tmpDir);
 
@@ -56,7 +55,7 @@ class EtagTest extends \Test\TestCase {
 		parent::tearDown();
 	}
 
-	public function testNewUser() {
+	public function testNewUser(): void {
 		$user1 = $this->getUniqueID('user_');
 		$this->userBackend->createUser($user1, '');
 

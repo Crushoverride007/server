@@ -3,8 +3,10 @@ OC.L10N.register(
     {
     "Dashboard" : "Dashboard",
     "Dashboard app" : "Dashboard app",
+    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an overview of your upcoming appointments, urgent emails, chat messages, incoming tickets, latest tweets and much more! People can add the widgets they like and change the background to their liking." : "Börja din dag informerad\n\nNextcloud Dashboard är din startpunkt för dagen och ger dig en översikt över dina kommande möten, brådskande e-postmeddelanden, chattmeddelanden, inkommande ärenden, senaste tweets och mycket mer! Användare kan lägga till widgetar de gillar och anpassa bakgrunden efter deras tycke.",
+    "\"{title} icon\"" : "\"{title}-ikon\"",
     "Customize" : "Anpassa",
-    "Edit widgets" : "Redigera gränssnittskomponenter",
+    "Edit widgets" : "Ändra widgetar",
     "Get more widgets from the App Store" : "Hämta fler widgetar från Appstore",
     "Weather service" : "Vädertjänst",
     "For your privacy, the weather data is requested by your Nextcloud server on your behalf so the weather service receives no personal information." : "För din integritet skull hämtas väderdata av din Nextcloud-server på dina vägnar så att vädertjänsten inte får någon personlig information.",
@@ -21,11 +23,7 @@ OC.L10N.register(
     "Good evening, {name}" : "God kväll, {name}",
     "Hello" : "Hej",
     "Hello, {name}" : "Hej, {name}",
-    "Show something" : "Visa någonting",
-    "Change background image" : "Byt bakgrundsbild",
-    "Pick from Files" : "Välj från filer",
-    "Default images" : "Standardbilder",
-    "Plain background" : "Enkel bakgrund",
-    "Insert from {productName}" : "Infoga från {productName}"
+    "Happy birthday 🥳🤩🎂🎉" : "Grattis på födelsedagen 🥳🤩🎂🎉",
+    "Happy birthday, {name} 🥳🤩🎂🎉" : "Grattis på födelsedagen, {name} 🥳🤩🎂🎉"
 },
 "nplurals=2; plural=(n != 1);");

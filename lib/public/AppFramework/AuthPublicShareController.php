@@ -3,31 +3,15 @@
 declare(strict_types=1);
 
 /**
- * @copyright 2018, Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @author Joas Schilling <coding@schilljs.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Tim Obert <tobert@w-commerce.de>
- * @author TimObert <tobert@w-commerce.de>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCP\AppFramework;
 
+use OCP\AppFramework\Http\Attribute\BruteForceProtection;
+use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
+use OCP\AppFramework\Http\Attribute\PublicPage;
+use OCP\AppFramework\Http\Attribute\UseSession;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IRequest;
@@ -46,7 +30,6 @@ use OCP\IURLGenerator;
  * @since 14.0.0
  */
 abstract class AuthPublicShareController extends PublicShareController {
-
 	/** @var IURLGenerator */
 	protected $urlGenerator;
 
@@ -54,23 +37,22 @@ abstract class AuthPublicShareController extends PublicShareController {
 	 * @since 14.0.0
 	 */
 	public function __construct(string $appName,
-								IRequest $request,
-								ISession $session,
-								IURLGenerator $urlGenerator) {
+		IRequest $request,
+		ISession $session,
+		IURLGenerator $urlGenerator) {
 		parent::__construct($appName, $request, $session);
 
 		$this->urlGenerator = $urlGenerator;
 	}
 
 	/**
-	 * @PublicPage
-	 * @NoCSRFRequired
-	 *
 	 * Show the authentication page
 	 * The form has to submit to the authenticate method route
 	 *
 	 * @since 14.0.0
 	 */
+	#[NoCSRFRequired]
+	#[PublicPage]
 	public function showAuthenticate(): TemplateResponse {
 		return new TemplateResponse('core', 'publicshareauth', [], 'guest');
 	}
@@ -130,7 +112,7 @@ abstract class AuthPublicShareController extends PublicShareController {
 	}
 
 	/**
-	 * Function called after successfull authentication
+	 * Function called after successful authentication
 	 *
 	 * You can use this to do some logging for example
 	 *
@@ -140,14 +122,13 @@ abstract class AuthPublicShareController extends PublicShareController {
 	}
 
 	/**
-	 * @UseSession
-	 * @PublicPage
-	 * @BruteForceProtection(action=publicLinkAuth)
-	 *
 	 * Authenticate the share
 	 *
 	 * @since 14.0.0
 	 */
+	#[BruteForceProtection(action: 'publicLinkAuth')]
+	#[PublicPage]
+	#[UseSession]
 	final public function authenticate(string $password = '', string $passwordRequest = 'no', string $identityToken = '') {
 		// Already authenticated
 		if ($this->isAuthenticated()) {
@@ -208,10 +189,10 @@ abstract class AuthPublicShareController extends PublicShareController {
 	private function getRoute(string $function): string {
 		$app = strtolower($this->appName);
 		$class = (new \ReflectionClass($this))->getShortName();
-		if (substr($class, -10) === 'Controller') {
+		if (str_ends_with($class, 'Controller')) {
 			$class = substr($class, 0, -10);
 		}
-		return $app .'.'. $class .'.'. $function;
+		return $app . '.' . $class . '.' . $function;
 	}
 
 	/**

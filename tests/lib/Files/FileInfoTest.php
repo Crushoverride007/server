@@ -1,14 +1,14 @@
 <?php
 /**
- * Copyright (c) 2016 Robin Appelman <robin@icewind.nl>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\Files;
 
 use OC\Files\FileInfo;
+use OC\Files\Mount\HomeMountPoint;
+use OC\Files\Mount\MountPoint;
 use OC\Files\Storage\Home;
 use OC\Files\Storage\Temporary;
 use OCP\IConfig;
@@ -27,25 +27,33 @@ class FileInfoTest extends TestCase {
 		$this->config = $this->getMockBuilder(IConfig::class)->getMock();
 	}
 
-	public function testIsMountedHomeStorage() {
+	public function testIsMountedHomeStorage(): void {
 		$user = $this->createMock(IUser::class);
 		$user->method('getUID')
 			->willReturn('foo');
 		$user->method('getHome')
 			->willReturn('foo');
+		$storage = new Home(['user' => $user]);
 
 		$fileInfo = new FileInfo(
 			'',
-			new Home(['user' => $user]),
-			'', [], null);
+			$storage,
+			'',
+			[],
+			new HomeMountPoint($user, $storage, '/foo/files')
+		);
 		$this->assertFalse($fileInfo->isMounted());
 	}
 
-	public function testIsMountedNonHomeStorage() {
+	public function testIsMountedNonHomeStorage(): void {
+		$storage = new Temporary();
 		$fileInfo = new FileInfo(
 			'',
-			new Temporary(),
-			'', [], null);
+			$storage,
+			'',
+			[],
+			new MountPoint($storage, '/foo/files/bar')
+		);
 		$this->assertTrue($fileInfo->isMounted());
 	}
 }

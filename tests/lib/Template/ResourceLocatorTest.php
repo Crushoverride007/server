@@ -1,13 +1,13 @@
 <?php
 /**
- * Copyright (c) 2013 Bart Visscher <bartv@thisnet.nl>
- * This file is licensed under the Affero General Public License version 3 or
- * later.
- * See the COPYING-README file.
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\Template;
 
+use OC\SystemConfig;
 use OC\Template\ResourceNotFoundException;
 use Psr\Log\LoggerInterface;
 
@@ -22,20 +22,23 @@ class ResourceLocatorTest extends \Test\TestCase {
 
 	/**
 	 * @param string $theme
-	 * @param array $core_map
-	 * @param array $party_map
-	 * @param array $appsRoots
 	 * @return \PHPUnit\Framework\MockObject\MockObject
 	 */
-	public function getResourceLocator($theme, $core_map, $party_map, $appsRoots) {
+	public function getResourceLocator($theme) {
+		$systemConfig = $this->createMock(SystemConfig::class);
+		$systemConfig
+			->expects($this->any())
+			->method('getValue')
+			->with('theme', '')
+			->willReturn($theme);
+		$this->overwriteService(SystemConfig::class, $systemConfig);
 		return $this->getMockForAbstractClass('OC\Template\ResourceLocator',
-			[$this->logger, $theme, $core_map, $party_map, $appsRoots ],
+			[$this->logger],
 			'', true, true, true, []);
 	}
 
-	public function testFind() {
-		$locator = $this->getResourceLocator('theme',
-			['core' => 'map'], ['3rd' => 'party'], ['foo' => 'bar']);
+	public function testFind(): void {
+		$locator = $this->getResourceLocator('theme');
 		$locator->expects($this->once())
 			->method('doFind')
 			->with('foo');
@@ -46,7 +49,12 @@ class ResourceLocatorTest extends \Test\TestCase {
 		$locator->find(['foo']);
 	}
 
-	public function testFindNotFound() {
+	public function testFindNotFound(): void {
+		$systemConfig = $this->createMock(SystemConfig::class);
+		$systemConfig->method('getValue')
+			->with('theme', '')
+			->willReturn('theme');
+		$this->overwriteService(SystemConfig::class, $systemConfig);
 		$locator = $this->getResourceLocator('theme',
 			['core' => 'map'], ['3rd' => 'party'], ['foo' => 'bar']);
 		$locator->expects($this->once())
@@ -64,9 +72,8 @@ class ResourceLocatorTest extends \Test\TestCase {
 		$locator->find(['foo']);
 	}
 
-	public function testAppendIfExist() {
-		$locator = $this->getResourceLocator('theme',
-			[__DIR__ => 'map'], ['3rd' => 'party'], ['foo' => 'bar']);
+	public function testAppendIfExist(): void {
+		$locator = $this->getResourceLocator('theme');
 		/** @var \OC\Template\ResourceLocator $locator */
 		$method = new \ReflectionMethod($locator, 'appendIfExist');
 		$method->setAccessible(true);
@@ -75,11 +82,7 @@ class ResourceLocatorTest extends \Test\TestCase {
 		$resource1 = [__DIR__, 'webroot', basename(__FILE__)];
 		$this->assertEquals([$resource1], $locator->getResources());
 
-		$method->invoke($locator, __DIR__, basename(__FILE__));
-		$resource2 = [__DIR__, 'map', basename(__FILE__)];
-		$this->assertEquals([$resource1, $resource2], $locator->getResources());
-
 		$method->invoke($locator, __DIR__, 'does-not-exist');
-		$this->assertEquals([$resource1, $resource2], $locator->getResources());
+		$this->assertEquals([$resource1], $locator->getResources());
 	}
 }

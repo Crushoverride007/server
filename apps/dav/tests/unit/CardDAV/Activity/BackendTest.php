@@ -1,27 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\Tests\unit\CardDAV\Activity;
 
@@ -40,7 +20,6 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
 
 class BackendTest extends TestCase {
-
 	/** @var IManager|MockObject */
 	protected $activityManager;
 
@@ -52,6 +31,9 @@ class BackendTest extends TestCase {
 
 	/** @var IAppManager|MockObject */
 	protected $appManager;
+
+	/** @var IUserManager|MockObject */
+	protected $userManager;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -100,11 +82,11 @@ class BackendTest extends TestCase {
 	/**
 	 * @dataProvider dataCallTriggerAddressBookActivity
 	 */
-	public function testCallTriggerAddressBookActivity(string $method, array $payload, string $expectedSubject, array $expectedPayload) {
+	public function testCallTriggerAddressBookActivity(string $method, array $payload, string $expectedSubject, array $expectedPayload): void {
 		$backend = $this->getBackend(['triggerAddressbookActivity']);
 		$backend->expects($this->once())
 			->method('triggerAddressbookActivity')
-			->willReturnCallback(function () use ($expectedPayload, $expectedSubject) {
+			->willReturnCallback(function () use ($expectedPayload, $expectedSubject): void {
 				$arguments = func_get_args();
 				$this->assertSame($expectedSubject, array_shift($arguments));
 				$this->assertEquals($expectedPayload, $arguments);
@@ -187,7 +169,7 @@ class BackendTest extends TestCase {
 	 * @param string[]|null $shareUsers
 	 * @param string[] $users
 	 */
-	public function testTriggerAddressBookActivity(string $action, array $data, array $shares, array $changedProperties, string $currentUser, string $author, ?array $shareUsers, array $users) {
+	public function testTriggerAddressBookActivity(string $action, array $data, array $shares, array $changedProperties, string $currentUser, string $author, ?array $shareUsers, array $users): void {
 		$backend = $this->getBackend(['getUsersForShares']);
 
 		if ($shareUsers === null) {
@@ -261,7 +243,7 @@ class BackendTest extends TestCase {
 		$this->assertEmpty($this->invokePrivate($backend, 'triggerAddressbookActivity', [Addressbook::SUBJECT_ADD, ['principaluri' => 'principals/system/system'], [], [], '', '', null, []]));
 	}
 
-	public function testUserDeletionDoesNotCreateActivity() {
+	public function testUserDeletionDoesNotCreateActivity(): void {
 		$backend = $this->getBackend();
 
 		$this->userManager->expects($this->once())
@@ -357,7 +339,7 @@ class BackendTest extends TestCase {
 	 * @param string[]|null $shareUsers
 	 * @param string[] $users
 	 */
-	public function testTriggerCardActivity(string $action, array $addressBookData, array $shares, array $cardData, string $currentUser, string $author, ?array $shareUsers, array $users) {
+	public function testTriggerCardActivity(string $action, array $addressBookData, array $shares, array $cardData, string $currentUser, string $author, ?array $shareUsers, array $users): void {
 		$backend = $this->getBackend(['getUsersForShares']);
 
 		if ($shareUsers === null) {
@@ -476,7 +458,7 @@ class BackendTest extends TestCase {
 	 * @param array $groups
 	 * @param array $expected
 	 */
-	public function testGetUsersForShares(array $shares, array $groups, array $expected) {
+	public function testGetUsersForShares(array $shares, array $groups, array $expected): void {
 		$backend = $this->getBackend();
 
 		$getGroups = [];

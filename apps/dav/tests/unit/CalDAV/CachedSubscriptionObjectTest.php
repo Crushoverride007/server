@@ -1,26 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2018 Georg Ehrke
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\Tests\unit\CalDAV;
 
@@ -28,7 +9,7 @@ use OCA\DAV\CalDAV\CachedSubscriptionObject;
 use OCA\DAV\CalDAV\CalDavBackend;
 
 class CachedSubscriptionObjectTest extends \Test\TestCase {
-	public function testGet() {
+	public function testGet(): void {
 		$backend = $this->createMock(CalDavBackend::class);
 		$calendarInfo = [
 			'{http://owncloud.org/ns}owner-principal' => 'user1',
@@ -52,7 +33,7 @@ class CachedSubscriptionObjectTest extends \Test\TestCase {
 	}
 
 	
-	public function testPut() {
+	public function testPut(): void {
 		$this->expectException(\Sabre\DAV\Exception\MethodNotAllowed::class);
 		$this->expectExceptionMessage('Creating objects in a cached subscription is not allowed');
 
@@ -72,7 +53,7 @@ class CachedSubscriptionObjectTest extends \Test\TestCase {
 	}
 
 	
-	public function testDelete() {
+	public function testDelete(): void {
 		$this->expectException(\Sabre\DAV\Exception\MethodNotAllowed::class);
 		$this->expectExceptionMessage('Deleting objects in a cached subscription is not allowed');
 

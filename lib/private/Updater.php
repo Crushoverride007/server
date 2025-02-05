@@ -3,52 +3,14 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- * @copyright Copyright (c) 2016, Lukas Reschke <lukas@statuscode.ch>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Frank Karlitschek <frank@karlitschek.de>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author J0WI <J0WI@users.noreply.github.com>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Steffen Lindner <mail@steffen-lindner.de>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Victor Dubiniuk <dubiniuk@owncloud.com>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC;
 
-use Composer\Semver\Semver;
-use OCP\App\IAppManager;
-use OCP\EventDispatcher\Event;
-use OCP\EventDispatcher\IEventDispatcher;
-use OCP\HintException;
-use OCP\IConfig;
-use OCP\ILogger;
-use OCP\Util;
 use OC\App\AppManager;
+use OC\App\AppStore\Fetcher\AppFetcher;
 use OC\DB\Connection;
 use OC\DB\MigrationService;
 use OC\DB\MigratorExecuteSqlEvent;
@@ -62,6 +24,15 @@ use OC\Repair\Events\RepairStartEvent;
 use OC\Repair\Events\RepairStepEvent;
 use OC\Repair\Events\RepairWarningEvent;
 use OC_App;
+use OCP\App\IAppManager;
+use OCP\EventDispatcher\Event;
+use OCP\EventDispatcher\IEventDispatcher;
+use OCP\HintException;
+use OCP\IAppConfig;
+use OCP\IConfig;
+use OCP\ILogger;
+use OCP\ServerVersion;
+use OCP\Util;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -74,20 +45,7 @@ use Psr\Log\LoggerInterface;
  *  - failure(string $message)
  */
 class Updater extends BasicEmitter {
-
-	/** @var LoggerInterface */
-	private $log;
-
-	/** @var IConfig */
-	private $config;
-
-	/** @var Checker */
-	private $checker;
-
-	/** @var Installer */
-	private $installer;
-
-	private $logLevelNames = [
+	private array $logLevelNames = [
 		0 => 'Debug',
 		1 => 'Info',
 		2 => 'Warning',
@@ -95,14 +53,14 @@ class Updater extends BasicEmitter {
 		4 => 'Fatal',
 	];
 
-	public function __construct(IConfig $config,
-								Checker $checker,
-								?LoggerInterface $log,
-								Installer $installer) {
-		$this->log = $log;
-		$this->config = $config;
-		$this->checker = $checker;
-		$this->installer = $installer;
+	public function __construct(
+		private ServerVersion $serverVersion,
+		private IConfig $config,
+		private IAppConfig $appConfig,
+		private Checker $checker,
+		private ?LoggerInterface $log,
+		private Installer $installer,
+	) {
 	}
 
 	/**
@@ -126,34 +84,31 @@ class Updater extends BasicEmitter {
 		}
 
 		// Clear CAN_INSTALL file if not on git
-		if (\OC_Util::getChannel() !== 'git' && is_file(\OC::$configDir.'/CAN_INSTALL')) {
+		if ($this->serverVersion->getChannel() !== 'git' && is_file(\OC::$configDir . '/CAN_INSTALL')) {
 			if (!unlink(\OC::$configDir . '/CAN_INSTALL')) {
 				$this->log->error('Could not cleanup CAN_INSTALL from your config folder. Please remove this file manually.');
 			}
 		}
 
-		$installedVersion = $this->config->getSystemValue('version', '0.0.0');
-		$currentVersion = implode('.', \OCP\Util::getVersion());
+		$installedVersion = $this->config->getSystemValueString('version', '0.0.0');
+		$currentVersion = implode('.', $this->serverVersion->getVersion());
 
 		$this->log->debug('starting upgrade from ' . $installedVersion . ' to ' . $currentVersion, ['app' => 'core']);
 
 		$success = true;
 		try {
-			if (PHP_INT_SIZE < 8 && Semver::satisfies($currentVersion, '> 25')) {
-				throw new HintException('You are running a 32-bit PHP version. Cannot upgrade to Nextcloud 26 and higher. Please switch to 64-bit PHP.');
-			}
 			$this->doUpgrade($currentVersion, $installedVersion);
 		} catch (HintException $exception) {
 			$this->log->error($exception->getMessage(), [
 				'exception' => $exception,
 			]);
-			$this->emit('\OC\Updater', 'failure', [$exception->getMessage() . ': ' .$exception->getHint()]);
+			$this->emit('\OC\Updater', 'failure', [$exception->getMessage() . ': ' . $exception->getHint()]);
 			$success = false;
 		} catch (\Exception $exception) {
 			$this->log->error($exception->getMessage(), [
 				'exception' => $exception,
 			]);
-			$this->emit('\OC\Updater', 'failure', [get_class($exception) . ': ' .$exception->getMessage()]);
+			$this->emit('\OC\Updater', 'failure', [get_class($exception) . ': ' . $exception->getMessage()]);
 			$success = false;
 		}
 
@@ -194,7 +149,7 @@ class Updater extends BasicEmitter {
 		// this should really be a JSON file
 		require \OC::$SERVERROOT . '/version.php';
 		/** @var string $vendor */
-		return (string) $vendor;
+		return (string)$vendor;
 	}
 
 	/**
@@ -222,7 +177,7 @@ class Updater extends BasicEmitter {
 		if ($currentVendor === 'nextcloud') {
 			return isset($allowedPreviousVersions[$currentVendor][$majorMinor])
 				&& (version_compare($oldVersion, $newVersion, '<=') ||
-					$this->config->getSystemValue('debug', false));
+					$this->config->getSystemValueBool('debug', false));
 		}
 
 		// Check if the instance can be migrated
@@ -255,12 +210,16 @@ class Updater extends BasicEmitter {
 		}
 
 		// create empty file in data dir, so we can later find
-		// out that this is indeed an ownCloud data directory
+		// out that this is indeed a Nextcloud data directory
 		// (in case it didn't exist before)
-		file_put_contents($this->config->getSystemValue('datadirectory', \OC::$SERVERROOT . '/data') . '/.ocdata', '');
+		file_put_contents(
+			$this->config->getSystemValueString('datadirectory', \OC::$SERVERROOT . '/data') . '/.ncdata',
+			"# Nextcloud data directory\n# Do not change this file",
+		);
 
 		// pre-upgrade repairs
-		$repair = new Repair(Repair::getBeforeUpgradeRepairSteps(), \OC::$server->get(\OCP\EventDispatcher\IEventDispatcher::class), \OC::$server->get(LoggerInterface::class));
+		$repair = \OCP\Server::get(Repair::class);
+		$repair->setRepairSteps(Repair::getBeforeUpgradeRepairSteps());
 		$repair->run();
 
 		$this->doCoreUpgrade();
@@ -277,9 +236,9 @@ class Updater extends BasicEmitter {
 		$this->doAppUpgrade();
 
 		// Update the appfetchers version so it downloads the correct list from the appstore
-		\OC::$server->getAppFetcher()->setVersion($currentVersion);
+		\OC::$server->get(AppFetcher::class)->setVersion($currentVersion);
 
-		/** @var IAppManager|AppManager $appManager */
+		/** @var AppManager $appManager */
 		$appManager = \OC::$server->getAppManager();
 
 		// upgrade appstore apps
@@ -301,11 +260,12 @@ class Updater extends BasicEmitter {
 		}
 
 		// post-upgrade repairs
-		$repair = new Repair(Repair::getRepairSteps(), \OC::$server->get(\OCP\EventDispatcher\IEventDispatcher::class), \OC::$server->get(LoggerInterface::class));
+		$repair = \OCP\Server::get(Repair::class);
+		$repair->setRepairSteps(Repair::getRepairSteps());
 		$repair->run();
 
 		//Invalidate update feed
-		$this->config->setAppValue('core', 'lastupdatedat', '0');
+		$this->appConfig->setValueInt('core', 'lastupdatedat', 0);
 
 		// Check for code integrity if not disabled
 		if (\OC::$server->getIntegrityCodeChecker()->isCodeCheckEnforced()) {
@@ -337,7 +297,7 @@ class Updater extends BasicEmitter {
 	 */
 	protected function doAppUpgrade(): void {
 		$apps = \OC_App::getEnabledApps();
-		$priorityTypes = ['authentication', 'filesystem', 'logging'];
+		$priorityTypes = ['authentication', 'extended_authentication', 'filesystem', 'logging'];
 		$pseudoOtherType = 'other';
 		$stacks = [$pseudoOtherType => []];
 
@@ -361,9 +321,9 @@ class Updater extends BasicEmitter {
 			$stack = $stacks[$type];
 			foreach ($stack as $appId) {
 				if (\OC_App::shouldUpgrade($appId)) {
-					$this->emit('\OC\Updater', 'appUpgradeStarted', [$appId, \OC_App::getAppVersion($appId)]);
+					$this->emit('\OC\Updater', 'appUpgradeStarted', [$appId, \OCP\Server::get(IAppManager::class)->getAppVersion($appId)]);
 					\OC_App::updateApp($appId);
-					$this->emit('\OC\Updater', 'appUpgrade', [$appId, \OC_App::getAppVersion($appId)]);
+					$this->emit('\OC\Updater', 'appUpgrade', [$appId, \OCP\Server::get(IAppManager::class)->getAppVersion($appId)]);
 				}
 				if ($type !== $pseudoOtherType) {
 					// load authentication, filesystem and logging apps after
@@ -405,7 +365,7 @@ class Updater extends BasicEmitter {
 	 * @return bool
 	 */
 	private function isCodeUpgrade(): bool {
-		$installedVersion = $this->config->getSystemValue('version', '0.0.0');
+		$installedVersion = $this->config->getSystemValueString('version', '0.0.0');
 		$currentVersion = implode('.', Util::getVersion());
 		if (version_compare($currentVersion, $installedVersion, '>')) {
 			return true;
@@ -452,29 +412,29 @@ class Updater extends BasicEmitter {
 		$dispatcher->addListener(
 			MigratorExecuteSqlEvent::class,
 			function (MigratorExecuteSqlEvent $event) use ($log): void {
-				$log->info(get_class($event).': ' . $event->getSql() . ' (' . $event->getCurrentStep() . ' of ' . $event->getMaxStep() . ')', ['app' => 'updater']);
+				$log->info(get_class($event) . ': ' . $event->getSql() . ' (' . $event->getCurrentStep() . ' of ' . $event->getMaxStep() . ')', ['app' => 'updater']);
 			}
 		);
 
 		$repairListener = function (Event $event) use ($log): void {
 			if ($event instanceof RepairStartEvent) {
-				$log->info(get_class($event).': Starting ... ' . $event->getMaxStep() .  ' (' . $event->getCurrentStepName() . ')', ['app' => 'updater']);
+				$log->info(get_class($event) . ': Starting ... ' . $event->getMaxStep() . ' (' . $event->getCurrentStepName() . ')', ['app' => 'updater']);
 			} elseif ($event instanceof RepairAdvanceEvent) {
 				$desc = $event->getDescription();
 				if (empty($desc)) {
 					$desc = '';
 				}
-				$log->info(get_class($event).': ' . $desc . ' (' . $event->getIncrement() . ')', ['app' => 'updater']);
+				$log->info(get_class($event) . ': ' . $desc . ' (' . $event->getIncrement() . ')', ['app' => 'updater']);
 			} elseif ($event instanceof RepairFinishEvent) {
 				$log->info(get_class($event), ['app' => 'updater']);
 			} elseif ($event instanceof RepairStepEvent) {
-				$log->info(get_class($event).': Repair step: ' . $event->getStepName(), ['app' => 'updater']);
+				$log->info(get_class($event) . ': Repair step: ' . $event->getStepName(), ['app' => 'updater']);
 			} elseif ($event instanceof RepairInfoEvent) {
-				$log->info(get_class($event).': Repair info: ' . $event->getMessage(), ['app' => 'updater']);
+				$log->info(get_class($event) . ': Repair info: ' . $event->getMessage(), ['app' => 'updater']);
 			} elseif ($event instanceof RepairWarningEvent) {
-				$log->warning(get_class($event).': Repair warning: ' . $event->getMessage(), ['app' => 'updater']);
+				$log->warning(get_class($event) . ': Repair warning: ' . $event->getMessage(), ['app' => 'updater']);
 			} elseif ($event instanceof RepairErrorEvent) {
-				$log->error(get_class($event).': Repair error: ' . $event->getMessage(), ['app' => 'updater']);
+				$log->error(get_class($event) . ': Repair error: ' . $event->getMessage(), ['app' => 'updater']);
 			}
 		};
 

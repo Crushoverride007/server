@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2015 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2015 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\Streams;
@@ -23,7 +22,7 @@ class DirectoryWrapper extends Wrapper implements Directory {
 	}
 
 	/**
-	 * @return string
+	 * @return string|false
 	 */
 	public function dir_readdir() {
 		return readdir($this->source);

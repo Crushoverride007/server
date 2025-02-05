@@ -1,22 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2019 Robin Appelman <robin@icewind.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2019 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Icewind\Streams;
@@ -55,9 +40,9 @@ class WrapperHandler {
 	 * @param resource|array $context
 	 * @param string|null $protocol deprecated, protocol is now automatically generated
 	 * @param string|null $class deprecated, class is now automatically generated
-	 * @return bool|resource
+	 * @return resource|false
 	 */
-	protected static function wrapSource($source, $context = [], $protocol = null, $class = null) {
+	protected static function wrapSource($source, $context = [], $protocol = null, $class = null, $mode = 'r+') {
 		if ($class === null) {
 			$class = static::class;
 		}
@@ -72,7 +57,7 @@ class WrapperHandler {
 			if (self::isDirectoryHandle($source)) {
 				return opendir($protocol . '://', $context);
 			} else {
-				return fopen($protocol . '://', 'r+', false, $context);
+				return fopen($protocol . '://', $mode, false, $context);
 			}
 		} finally {
 			stream_wrapper_unregister($protocol);

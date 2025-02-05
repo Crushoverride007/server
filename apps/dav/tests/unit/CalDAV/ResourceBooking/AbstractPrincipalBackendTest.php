@@ -1,32 +1,14 @@
 <?php
 /**
- * @copyright Copyright (c) 2018, Georg Ehrke
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\Tests\unit\CalDAV\ResourceBooking;
 
 use OCA\DAV\CalDAV\Proxy\Proxy;
 use OCA\DAV\CalDAV\Proxy\ProxyMapper;
+use OCA\DAV\CalDAV\ResourceBooking\ResourcePrincipalBackend;
+use OCA\DAV\CalDAV\ResourceBooking\RoomPrincipalBackend;
 use OCP\IGroupManager;
 use OCP\IUser;
 use OCP\IUserSession;
@@ -35,8 +17,7 @@ use Sabre\DAV\PropPatch;
 use Test\TestCase;
 
 abstract class AbstractPrincipalBackendTest extends TestCase {
-
-	/** @var \OCA\DAV\CalDAV\ResourceBooking\ResourcePrincipalBackend|\OCA\DAV\CalDAV\ResourceBooking\RoomPrincipalBackend */
+	/** @var ResourcePrincipalBackend|RoomPrincipalBackend */
 	protected $principalBackend;
 
 	/** @var IUserSession|\PHPUnit\Framework\MockObject\MockObject */
@@ -84,7 +65,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$query->delete('calendar_rooms_md')->execute();
 	}
 
-	public function testGetPrincipalsByPrefix() {
+	public function testGetPrincipalsByPrefix(): void {
 		$actual = $this->principalBackend->getPrincipalsByPrefix($this->principalPrefix);
 
 		$this->assertEquals([
@@ -132,12 +113,12 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		], $actual);
 	}
 
-	public function testGetNoPrincipalsByPrefixForWrongPrincipalPrefix() {
+	public function testGetNoPrincipalsByPrefixForWrongPrincipalPrefix(): void {
 		$actual = $this->principalBackend->getPrincipalsByPrefix('principals/users');
 		$this->assertEquals([], $actual);
 	}
 
-	public function testGetPrincipalByPath() {
+	public function testGetPrincipalByPath(): void {
 		$actual = $this->principalBackend->getPrincipalByPath($this->principalPrefix . '/backend2-res3');
 		$this->assertEquals([
 			'uri' => $this->principalPrefix . '/backend2-res3',
@@ -149,22 +130,22 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		], $actual);
 	}
 
-	public function testGetPrincipalByPathNotFound() {
+	public function testGetPrincipalByPathNotFound(): void {
 		$actual = $this->principalBackend->getPrincipalByPath($this->principalPrefix . '/db-123');
 		$this->assertEquals(null, $actual);
 	}
 
-	public function testGetPrincipalByPathWrongPrefix() {
+	public function testGetPrincipalByPathWrongPrefix(): void {
 		$actual = $this->principalBackend->getPrincipalByPath('principals/users/foo-bar');
 		$this->assertEquals(null, $actual);
 	}
 
-	public function testGetGroupMemberSet() {
+	public function testGetGroupMemberSet(): void {
 		$actual = $this->principalBackend->getGroupMemberSet($this->principalPrefix . '/backend1-res1');
 		$this->assertEquals([], $actual);
 	}
 
-	public function testGetGroupMemberSetProxyRead() {
+	public function testGetGroupMemberSetProxyRead(): void {
 		$proxy1 = new Proxy();
 		$proxy1->setProxyId('proxyId1');
 		$proxy1->setPermissions(1);
@@ -186,7 +167,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(['proxyId1'], $actual);
 	}
 
-	public function testGetGroupMemberSetProxyWrite() {
+	public function testGetGroupMemberSetProxyWrite(): void {
 		$proxy1 = new Proxy();
 		$proxy1->setProxyId('proxyId1');
 		$proxy1->setPermissions(1);
@@ -208,7 +189,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(['proxyId2', 'proxyId3'], $actual);
 	}
 
-	public function testGetGroupMembership() {
+	public function testGetGroupMembership(): void {
 		$proxy1 = new Proxy();
 		$proxy1->setOwnerId('proxyId1');
 		$proxy1->setPermissions(1);
@@ -227,49 +208,49 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(['proxyId1/calendar-proxy-read', 'proxyId2/calendar-proxy-write'], $actual);
 	}
 
-	public function testSetGroupMemberSet() {
-		$this->proxyMapper->expects($this->at(0))
+	public function testSetGroupMemberSet(): void {
+		$this->proxyMapper->expects($this->once())
 			->method('getProxiesOf')
 			->with($this->principalPrefix . '/backend1-res1')
 			->willReturn([]);
 
-		$this->proxyMapper->expects($this->at(1))
+		$this->proxyMapper->expects($this->exactly(2))
 			->method('insert')
-			->with($this->callback(function ($proxy) {
-				/** @var Proxy $proxy */
-				if ($proxy->getOwnerId() !== $this->principalPrefix . '/backend1-res1') {
-					return false;
-				}
-				if ($proxy->getProxyId() !== $this->principalPrefix . '/backend1-res2') {
-					return false;
-				}
-				if ($proxy->getPermissions() !== 3) {
-					return false;
-				}
+			->withConsecutive(
+				[$this->callback(function ($proxy) {
+					/** @var Proxy $proxy */
+					if ($proxy->getOwnerId() !== $this->principalPrefix . '/backend1-res1') {
+						return false;
+					}
+					if ($proxy->getProxyId() !== $this->principalPrefix . '/backend1-res2') {
+						return false;
+					}
+					if ($proxy->getPermissions() !== 3) {
+						return false;
+					}
 
-				return true;
-			}));
-		$this->proxyMapper->expects($this->at(2))
-			->method('insert')
-			->with($this->callback(function ($proxy) {
-				/** @var Proxy $proxy */
-				if ($proxy->getOwnerId() !== $this->principalPrefix . '/backend1-res1') {
-					return false;
-				}
-				if ($proxy->getProxyId() !== $this->principalPrefix . '/backend2-res3') {
-					return false;
-				}
-				if ($proxy->getPermissions() !== 3) {
-					return false;
-				}
+					return true;
+				})],
+				[$this->callback(function ($proxy) {
+					/** @var Proxy $proxy */
+					if ($proxy->getOwnerId() !== $this->principalPrefix . '/backend1-res1') {
+						return false;
+					}
+					if ($proxy->getProxyId() !== $this->principalPrefix . '/backend2-res3') {
+						return false;
+					}
+					if ($proxy->getPermissions() !== 3) {
+						return false;
+					}
 
-				return true;
-			}));
+					return true;
+				})],
+			);
 
 		$this->principalBackend->setGroupMemberSet($this->principalPrefix . '/backend1-res1/calendar-proxy-write', [$this->principalPrefix . '/backend1-res2', $this->principalPrefix . '/backend2-res3']);
 	}
 
-	public function testUpdatePrincipal() {
+	public function testUpdatePrincipal(): void {
 		$propPatch = $this->createMock(PropPatch::class);
 		$actual = $this->principalBackend->updatePrincipal($this->principalPrefix . '/foo-bar', $propPatch);
 
@@ -279,7 +260,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 	/**
 	 * @dataProvider dataSearchPrincipals
 	 */
-	public function testSearchPrincipals($expected, $test) {
+	public function testSearchPrincipals($expected, $test): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -319,7 +300,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		];
 	}
 
-	public function testSearchPrincipalsByMetadataKey() {
+	public function testSearchPrincipalsByMetadataKey(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -339,7 +320,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		], $actual);
 	}
 
-	public function testSearchPrincipalsByCalendarUserAddressSet() {
+	public function testSearchPrincipalsByCalendarUserAddressSet(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->method('getUser')
 			->with()
@@ -359,7 +340,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 			$actual);
 	}
 
-	public function testSearchPrincipalsEmptySearchProperties() {
+	public function testSearchPrincipalsEmptySearchProperties(): void {
 		$this->userSession->expects($this->never())
 			->method('getUser');
 		$this->groupManager->expects($this->never())
@@ -368,7 +349,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->principalBackend->searchPrincipals($this->principalPrefix, []);
 	}
 
-	public function testSearchPrincipalsWrongPrincipalPrefix() {
+	public function testSearchPrincipalsWrongPrincipalPrefix(): void {
 		$this->userSession->expects($this->never())
 			->method('getUser');
 		$this->groupManager->expects($this->never())
@@ -379,7 +360,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		]);
 	}
 
-	public function testFindByUriByEmail() {
+	public function testFindByUriByEmail(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -394,7 +375,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals($this->principalPrefix . '/backend1-res1', $actual);
 	}
 
-	public function testFindByUriByEmailForbiddenResource() {
+	public function testFindByUriByEmailForbiddenResource(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -409,7 +390,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(null, $actual);
 	}
 
-	public function testFindByUriByEmailNotFound() {
+	public function testFindByUriByEmailNotFound(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -424,7 +405,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(null, $actual);
 	}
 
-	public function testFindByUriByPrincipal() {
+	public function testFindByUriByPrincipal(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -439,7 +420,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals($this->principalPrefix . '/backend3-res6', $actual);
 	}
 
-	public function testFindByUriByPrincipalForbiddenResource() {
+	public function testFindByUriByPrincipalForbiddenResource(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -454,7 +435,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(null, $actual);
 	}
 
-	public function testFindByUriByPrincipalNotFound() {
+	public function testFindByUriByPrincipalNotFound(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')
@@ -469,7 +450,7 @@ abstract class AbstractPrincipalBackendTest extends TestCase {
 		$this->assertEquals(null, $actual);
 	}
 
-	public function testFindByUriByUnknownUri() {
+	public function testFindByUriByUnknownUri(): void {
 		$user = $this->createMock(IUser::class);
 		$this->userSession->expects($this->once())
 			->method('getUser')

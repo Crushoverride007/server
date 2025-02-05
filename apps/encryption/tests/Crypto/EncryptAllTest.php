@@ -1,29 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Kenneth Newwood <kenneth@newwood.name>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Encryption\Tests\Crypto;
 
@@ -36,6 +16,7 @@ use OCP\Files\FileInfo;
 use OCP\IConfig;
 use OCP\IL10N;
 use OCP\IUserManager;
+use OCP\L10N\IFactory;
 use OCP\Mail\IMailer;
 use OCP\Security\ISecureRandom;
 use OCP\UserInterface;
@@ -48,46 +29,49 @@ use Test\TestCase;
 
 class EncryptAllTest extends TestCase {
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCA\Encryption\KeyManager */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|KeyManager */
 	protected $keyManager;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCA\Encryption\Util */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|Util */
 	protected $util;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCP\IUserManager */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|IUserManager */
 	protected $userManager;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCA\Encryption\Users\Setup */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|Setup */
 	protected $setupUser;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OC\Files\View */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|View */
 	protected $view;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCP\IConfig */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|IConfig */
 	protected $config;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCP\Mail\IMailer */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|IMailer */
 	protected $mailer;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCP\IL10N */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|IL10N */
 	protected $l;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \Symfony\Component\Console\Helper\QuestionHelper */
+	/** @var \PHPUnit\Framework\MockObject\MockObject | IFactory */
+	protected $l10nFactory;
+
+	/** @var \PHPUnit\Framework\MockObject\MockObject | \Symfony\Component\Console\Helper\QuestionHelper */
 	protected $questionHelper;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \Symfony\Component\Console\Input\InputInterface */
+	/** @var \PHPUnit\Framework\MockObject\MockObject | \Symfony\Component\Console\Input\InputInterface */
 	protected $inputInterface;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \Symfony\Component\Console\Output\OutputInterface */
+	/** @var \PHPUnit\Framework\MockObject\MockObject | \Symfony\Component\Console\Output\OutputInterface */
 	protected $outputInterface;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCP\UserInterface */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|UserInterface */
 	protected $userInterface;
 
-	/** @var  \PHPUnit\Framework\MockObject\MockObject | \OCP\Security\ISecureRandom  */
+	/** @var \PHPUnit\Framework\MockObject\MockObject|ISecureRandom */
 	protected $secureRandom;
 
-	/** @var  EncryptAll */
+	/** @var EncryptAll */
 	protected $encryptAll;
 
 	protected function setUp(): void {
@@ -106,6 +90,7 @@ class EncryptAllTest extends TestCase {
 			->disableOriginalConstructor()->getMock();
 		$this->mailer = $this->getMockBuilder(IMailer::class)
 			->disableOriginalConstructor()->getMock();
+		$this->l10nFactory = $this->createMock(IFactory::class);
 		$this->l = $this->getMockBuilder(IL10N::class)
 			->disableOriginalConstructor()->getMock();
 		$this->questionHelper = $this->getMockBuilder(QuestionHelper::class)
@@ -117,8 +102,12 @@ class EncryptAllTest extends TestCase {
 		$this->userInterface = $this->getMockBuilder(UserInterface::class)
 			->disableOriginalConstructor()->getMock();
 
-		/* We need format method to return a string */
+		/**
+		 * We need format method to return a string
+		 * @var OutputFormatterInterface|\PHPUnit\Framework\MockObject\MockObject
+		 */
 		$outputFormatter = $this->createMock(OutputFormatterInterface::class);
+		$outputFormatter->method('isDecorated')->willReturn(false);
 		$outputFormatter->method('format')->willReturnArgument(0);
 
 		$this->outputInterface->expects($this->any())->method('getFormatter')
@@ -140,13 +129,14 @@ class EncryptAllTest extends TestCase {
 			$this->config,
 			$this->mailer,
 			$this->l,
+			$this->l10nFactory,
 			$this->questionHelper,
 			$this->secureRandom
 		);
 	}
 
-	public function testEncryptAll() {
-		/** @var EncryptAll  | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
+	public function testEncryptAll(): void {
+		/** @var EncryptAll | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
 		$encryptAll = $this->getMockBuilder(EncryptAll::class)
 			->setConstructorArgs(
 				[
@@ -158,6 +148,7 @@ class EncryptAllTest extends TestCase {
 					$this->config,
 					$this->mailer,
 					$this->l,
+					$this->l10nFactory,
 					$this->questionHelper,
 					$this->secureRandom
 				]
@@ -173,8 +164,8 @@ class EncryptAllTest extends TestCase {
 		$encryptAll->encryptAll($this->inputInterface, $this->outputInterface);
 	}
 
-	public function testEncryptAllWithMasterKey() {
-		/** @var EncryptAll  | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
+	public function testEncryptAllWithMasterKey(): void {
+		/** @var EncryptAll | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
 		$encryptAll = $this->getMockBuilder(EncryptAll::class)
 			->setConstructorArgs(
 				[
@@ -186,6 +177,7 @@ class EncryptAllTest extends TestCase {
 					$this->config,
 					$this->mailer,
 					$this->l,
+					$this->l10nFactory,
 					$this->questionHelper,
 					$this->secureRandom
 				]
@@ -202,8 +194,8 @@ class EncryptAllTest extends TestCase {
 		$encryptAll->encryptAll($this->inputInterface, $this->outputInterface);
 	}
 
-	public function testCreateKeyPairs() {
-		/** @var EncryptAll  | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
+	public function testCreateKeyPairs(): void {
+		/** @var EncryptAll | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
 		$encryptAll = $this->getMockBuilder(EncryptAll::class)
 			->setConstructorArgs(
 				[
@@ -215,6 +207,7 @@ class EncryptAllTest extends TestCase {
 					$this->config,
 					$this->mailer,
 					$this->l,
+					$this->l10nFactory,
 					$this->questionHelper,
 					$this->secureRandom
 				]
@@ -251,8 +244,8 @@ class EncryptAllTest extends TestCase {
 		$this->assertSame('', $userPasswords['user2']);
 	}
 
-	public function testEncryptAllUsersFiles() {
-		/** @var EncryptAll  | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
+	public function testEncryptAllUsersFiles(): void {
+		/** @var EncryptAll | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
 		$encryptAll = $this->getMockBuilder(EncryptAll::class)
 			->setConstructorArgs(
 				[
@@ -264,6 +257,7 @@ class EncryptAllTest extends TestCase {
 					$this->config,
 					$this->mailer,
 					$this->l,
+					$this->l10nFactory,
 					$this->questionHelper,
 					$this->secureRandom
 				]
@@ -286,8 +280,8 @@ class EncryptAllTest extends TestCase {
 		$this->invokePrivate($encryptAll, 'encryptAllUsersFiles');
 	}
 
-	public function testEncryptUsersFiles() {
-		/** @var EncryptAll  | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
+	public function testEncryptUsersFiles(): void {
+		/** @var EncryptAll | \PHPUnit\Framework\MockObject\MockObject  $encryptAll */
 		$encryptAll = $this->getMockBuilder(EncryptAll::class)
 			->setConstructorArgs(
 				[
@@ -299,6 +293,7 @@ class EncryptAllTest extends TestCase {
 					$this->config,
 					$this->mailer,
 					$this->l,
+					$this->l10nFactory,
 					$this->questionHelper,
 					$this->secureRandom
 				]
@@ -338,15 +333,17 @@ class EncryptAllTest extends TestCase {
 				['/user1/files/foo/subfile'],
 			);
 
+		$outputFormatter = $this->createMock(OutputFormatterInterface::class);
+		$outputFormatter->method('isDecorated')->willReturn(false);
 		$this->outputInterface->expects($this->any())
 			->method('getFormatter')
-			->willReturn($this->createMock(OutputFormatterInterface::class));
+			->willReturn($outputFormatter);
 		$progressBar = new ProgressBar($this->outputInterface);
 
 		$this->invokePrivate($encryptAll, 'encryptUsersFiles', ['user1', $progressBar, '']);
 	}
 
-	public function testGenerateOneTimePassword() {
+	public function testGenerateOneTimePassword(): void {
 		$password = $this->invokePrivate($this->encryptAll, 'generateOneTimePassword', ['user1']);
 		$this->assertTrue(is_string($password));
 		$this->assertSame(8, strlen($password));
@@ -360,7 +357,7 @@ class EncryptAllTest extends TestCase {
 	 * @dataProvider dataTestEncryptFile
 	 * @param $isEncrypted
 	 */
-	public function testEncryptFile($isEncrypted) {
+	public function testEncryptFile($isEncrypted): void {
 		$fileInfo = $this->createMock(FileInfo::class);
 		$fileInfo->expects($this->any())->method('isEncrypted')
 			->willReturn($isEncrypted);

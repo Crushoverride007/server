@@ -2,12 +2,11 @@
     "Authentication" : "Authentication",
     "Unknown filetype" : "Typo de file incognite",
     "Invalid image" : "Imagine invalide",
+    "Files" : "Files",
     "seconds ago" : "secundas passate",
     "__language_name__" : "Interlingua de IALA",
-    "Help" : "Adjuta",
     "Settings" : "Configurationes",
     "Log out" : "Clauder session",
-    "Users" : "Usatores",
     "Email" : "E-posta",
     "Phone" : "Phono",
     "Twitter" : "Twitter",
@@ -15,8 +14,6 @@
     "Address" : "Adresse",
     "Profile picture" : "Pictura de profilo",
     "About" : "A proposito",
-    "Full name" : "Nomine complete",
-    "Unknown user" : "Usator incognite",
     "Sunday" : "Dominica",
     "Monday" : "Lunedi",
     "Tuesday" : "Martedi",
@@ -62,9 +59,10 @@
     "Oct." : "Oct.",
     "Nov." : "Nov.",
     "Dec." : "Dec.",
-    "A valid username must be provided" : "Un nomine de usator valide debe esser providite",
     "A valid password must be provided" : "Un contrasigno valide debe esser providite",
     "Authentication error" : "Error in authentication",
-    "Storage is temporarily not available" : "Immagazinage es provisorimente non disponibile"
+    "Storage is temporarily not available" : "Immagazinage es provisorimente non disponibile",
+    "Summary" : "Summario",
+    "Users" : "Usatores"
 },"pluralForm" :"nplurals=2; plural=(n != 1);"
 }

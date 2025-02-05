@@ -1,30 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- *
- * @author Joas Schilling <coding@schilljs.com>
- * @author Jonas Rittershofer <jotoeri@users.noreply.github.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Maxence Lange <maxence@nextcloud.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCP\RichObjectStrings;
 
@@ -84,7 +61,8 @@ class Definitions {
 			'parameters' => [
 				'id' => [
 					'since' => '11.0.0',
-					'required' => true, 'description' => 'The id used to identify the announcement on the instance',
+					'required' => true,
+					'description' => 'The id used to identify the announcement on the instance',
 					'example' => '42',
 				],
 				'name' => [
@@ -108,7 +86,8 @@ class Definitions {
 			'parameters' => [
 				'id' => [
 					'since' => '11.0.0',
-					'required' => true, 'description' => 'The app id',
+					'required' => true,
+					'description' => 'The app id',
 					'example' => 'updatenotification',
 				],
 				'name' => [
@@ -191,6 +170,18 @@ class Definitions {
 					'required' => false,
 					'description' => 'The link to the conversation',
 					'example' => 'https://localhost/index.php/call/R4nd0mToken',
+				],
+				'icon-url' => [
+					'since' => '27.0.0',
+					'required' => false,
+					'description' => 'The icon url to use as avatar',
+					'example' => 'https://localhost/ocs/v2.php/apps/spreed/api/v1/room/R4nd0mToken/avatar'
+				],
+				'message-id' => [
+					'since' => '27.0.0',
+					'required' => false,
+					'description' => 'The id of a message that was referred to',
+					'example' => '12345',
 				],
 			],
 		],
@@ -346,6 +337,42 @@ class Definitions {
 					'required' => false,
 					'description' => 'Whether or not a preview is available. If `no` the mimetype icon should be used',
 					'example' => 'yes',
+				],
+				'mtime' => [
+					'since' => '25.0.0',
+					'required' => false,
+					'description' => 'The mtime of the file/folder as unix timestamp',
+					'example' => '1661854213',
+				],
+				'etag' => [
+					'since' => '25.0.0',
+					'required' => false,
+					'description' => 'The ETag of the file/folder',
+					'example' => 'abcdefghi',
+				],
+				'permissions' => [
+					'since' => '25.0.0',
+					'required' => false,
+					'description' => 'The permissions on the file/folder',
+					'example' => '3',
+				],
+				'width' => [
+					'since' => '29.0.0',
+					'required' => false,
+					'description' => 'The width in pixels if the file is an image',
+					'example' => '1920',
+				],
+				'height' => [
+					'since' => '29.0.0',
+					'required' => false,
+					'description' => 'The height in pixels if the file is an image',
+					'example' => '1080',
+				],
+				'blurhash' => [
+					'since' => '30.0.0',
+					'required' => false,
+					'description' => 'The blurhash of the image',
+					'example' => 'LEHV9uae2yk8pyo0adR*.7kCMdnj',
 				],
 			],
 		],

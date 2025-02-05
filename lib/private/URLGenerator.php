@@ -1,42 +1,10 @@
 <?php
 
 declare(strict_types=1);
-
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Rudolf <github.com@daniel-rudolf.de>
- * @author Felix Epp <work@felixepp.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Julius Haertl <jus@bitgrid.net>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author mmccarn <mmccarn-github@mmsionline.us>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Thomas Tanghus <thomas@tanghus.net>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC;
 
@@ -46,6 +14,7 @@ use OCP\App\AppPathNotFoundException;
 use OCP\App\IAppManager;
 use OCP\ICacheFactory;
 use OCP\IConfig;
+use OCP\INavigationManager;
 use OCP\IRequest;
 use OCP\IURLGenerator;
 use OCP\IUserSession;
@@ -68,12 +37,13 @@ class URLGenerator implements IURLGenerator {
 	/** @var null|string */
 	private $baseUrl = null;
 	private ?IAppManager $appManager = null;
+	private ?INavigationManager $navigationManager = null;
 
 	public function __construct(IConfig $config,
-								IUserSession $userSession,
-								ICacheFactory $cacheFactory,
-								IRequest $request,
-								Router $router
+		IUserSession $userSession,
+		ICacheFactory $cacheFactory,
+		IRequest $request,
+		Router $router,
 	) {
 		$this->config = $config;
 		$this->userSession = $userSession;
@@ -88,6 +58,14 @@ class URLGenerator implements IURLGenerator {
 		}
 		$this->appManager = \OCP\Server::get(IAppManager::class);
 		return $this->appManager;
+	}
+
+	private function getNavigationManager(): INavigationManager {
+		if ($this->navigationManager !== null) {
+			return $this->navigationManager;
+		}
+		$this->navigationManager = \OCP\Server::get(INavigationManager::class);
+		return $this->navigationManager;
 	}
 
 	/**
@@ -116,16 +94,25 @@ class URLGenerator implements IURLGenerator {
 	}
 
 	public function linkToOCSRouteAbsolute(string $routeName, array $arguments = []): string {
-		$route = $this->router->generate('ocs.'.$routeName, $arguments, false);
+		// Returns `/subfolder/index.php/ocsapp/…` with `'htaccess.IgnoreFrontController' => false` in config.php
+		// And `/subfolder/ocsapp/…` with `'htaccess.IgnoreFrontController' => true` in config.php
+		$route = $this->router->generate('ocs.' . $routeName, $arguments, false);
 
-		$indexPhpPos = strpos($route, '/index.php/');
-		if ($indexPhpPos !== false) {
-			$route = substr($route, $indexPhpPos + 10);
+		// Cut off `/subfolder`
+		if (\OC::$WEBROOT !== '' && str_starts_with($route, \OC::$WEBROOT)) {
+			$route = substr($route, \strlen(\OC::$WEBROOT));
 		}
 
+		if (str_starts_with($route, '/index.php/')) {
+			$route = substr($route, 10);
+		}
+
+		// Remove `ocsapp/` bit
 		$route = substr($route, 7);
+		// Prefix with ocs/v2.php endpoint
 		$route = '/ocs/v2.php' . $route;
 
+		// Turn into an absolute URL
 		return $this->getAbsoluteURL($route);
 	}
 
@@ -135,19 +122,19 @@ class URLGenerator implements IURLGenerator {
 	 * @param string $appName app
 	 * @param string $file file
 	 * @param array $args array with param=>value, will be appended to the returned url
-	 *    The value of $args will be urlencoded
+	 *                    The value of $args will be urlencoded
 	 * @return string the url
 	 *
 	 * Returns a url to the given app and file.
 	 */
 	public function linkTo(string $appName, string $file, array $args = []): string {
-		$frontControllerActive = ($this->config->getSystemValue('htaccess.IgnoreFrontController', false) === true || getenv('front_controller_active') === 'true');
+		$frontControllerActive = ($this->config->getSystemValueBool('htaccess.IgnoreFrontController', false) || getenv('front_controller_active') === 'true');
 
 		if ($appName !== '') {
 			$app_path = $this->getAppManager()->getAppPath($appName);
 			// Check if the app is in the app folder
 			if (file_exists($app_path . '/' . $file)) {
-				if (substr($file, -3) === 'php') {
+				if (str_ends_with($file, 'php')) {
 					$urlLinkTo = \OC::$WEBROOT . '/index.php/apps/' . $appName;
 					if ($frontControllerActive) {
 						$urlLinkTo = \OC::$WEBROOT . '/apps/' . $appName;
@@ -189,8 +176,8 @@ class URLGenerator implements IURLGenerator {
 	 * Returns the path to the image.
 	 */
 	public function imagePath(string $appName, string $file): string {
-		$cache = $this->cacheFactory->createDistributed('imagePath-'.md5($this->getBaseUrl()).'-');
-		$cacheKey = $appName.'-'.$file;
+		$cache = $this->cacheFactory->createDistributed('imagePath-' . md5($this->getBaseUrl()) . '-');
+		$cacheKey = $appName . '-' . $file;
 		if ($key = $cache->get($cacheKey)) {
 			return $key;
 		}
@@ -214,10 +201,10 @@ class URLGenerator implements IURLGenerator {
 
 		// Check if the app is in the app folder
 		$path = '';
-		$themingEnabled = $this->config->getSystemValue('installed', false) && $this->getAppManager()->isEnabledForUser('theming');
+		$themingEnabled = $this->config->getSystemValueBool('installed', false) && $this->getAppManager()->isEnabledForUser('theming');
 		$themingImagePath = false;
 		if ($themingEnabled) {
-			$themingDefaults = \OC::$server->getThemingDefaults();
+			$themingDefaults = \OC::$server->get('ThemingDefaults');
 			if ($themingDefaults instanceof ThemingDefaults) {
 				$themingImagePath = $themingDefaults->replaceImagePath($appName, $file);
 			}
@@ -268,17 +255,17 @@ class URLGenerator implements IURLGenerator {
 
 	/**
 	 * Makes an URL absolute
-	 * @param string $url the url in the ownCloud host
+	 * @param string $url the url in the Nextcloud host
 	 * @return string the absolute version of the url
 	 */
 	public function getAbsoluteURL(string $url): string {
-		$separator = strpos($url, '/') === 0 ? '' : '/';
+		$separator = str_starts_with($url, '/') ? '' : '/';
 
 		if (\OC::$CLI && !\defined('PHPUNIT_RUN')) {
-			return rtrim($this->config->getSystemValue('overwrite.cli.url'), '/') . '/' . ltrim($url, '/');
+			return rtrim($this->config->getSystemValueString('overwrite.cli.url'), '/') . '/' . ltrim($url, '/');
 		}
-		// The ownCloud web root can already be prepended.
-		if (\OC::$WEBROOT !== '' && strpos($url, \OC::$WEBROOT) === 0) {
+		// The Nextcloud web root could already be prepended.
+		if (\OC::$WEBROOT !== '' && str_starts_with($url, \OC::$WEBROOT)) {
 			$url = substr($url, \strlen(\OC::$WEBROOT));
 		}
 
@@ -290,7 +277,7 @@ class URLGenerator implements IURLGenerator {
 	 * @return string url to the online documentation
 	 */
 	public function linkToDocs(string $key): string {
-		$theme = \OC::$server->getThemingDefaults();
+		$theme = \OC::$server->get('ThemingDefaults');
 		return $theme->buildDocLinkToKey($key);
 	}
 
@@ -302,7 +289,7 @@ class URLGenerator implements IURLGenerator {
 	public function linkToDefaultPageUrl(): string {
 		// Deny the redirect if the URL contains a @
 		// This prevents unvalidated redirects like ?redirect_url=:user@domain.com
-		if (isset($_REQUEST['redirect_url']) && strpos($_REQUEST['redirect_url'], '@') === false) {
+		if (isset($_REQUEST['redirect_url']) && !str_contains($_REQUEST['redirect_url'], '@')) {
 			return $this->getAbsoluteURL(urldecode($_REQUEST['redirect_url']));
 		}
 
@@ -311,30 +298,17 @@ class URLGenerator implements IURLGenerator {
 			return $this->getAbsoluteURL($defaultPage);
 		}
 
-		$appId = 'files';
-		$defaultApps = explode(',', $this->config->getSystemValue('defaultapp', 'dashboard,files'));
-
-		$userId = $this->userSession->isLoggedIn() ? $this->userSession->getUser()->getUID() : null;
-		if ($userId !== null) {
-			$userDefaultApps = explode(',', $this->config->getUserValue($userId, 'core', 'defaultapp'));
-			$defaultApps = array_filter(array_merge($userDefaultApps, $defaultApps));
+		$entryId = $this->getNavigationManager()->getDefaultEntryIdForUser();
+		$entry = $this->getNavigationManager()->get($entryId);
+		$href = (string)$entry['href'];
+		if ($href === '') {
+			throw new \InvalidArgumentException('Default navigation entry is missing href: ' . $entryId);
+		}
+		if (str_starts_with($href, '/index.php/') && ($this->config->getSystemValueBool('htaccess.IgnoreFrontController', false) || getenv('front_controller_active') === 'true')) {
+			$href = substr($href, 10);
 		}
 
-		// find the first app that is enabled for the current user
-		foreach ($defaultApps as $defaultApp) {
-			$defaultApp = \OC_App::cleanAppId(strip_tags($defaultApp));
-			if (\OC::$server->getAppManager()->isEnabledForUser($defaultApp)) {
-				$appId = $defaultApp;
-				break;
-			}
-		}
-
-		if ($this->config->getSystemValue('htaccess.IgnoreFrontController', false) === true
-			|| getenv('front_controller_active') === 'true') {
-			return $this->getAbsoluteURL('/apps/' . $appId . '/');
-		}
-
-		return $this->getAbsoluteURL('/index.php/apps/' . $appId . '/');
+		return $this->getAbsoluteURL($href);
 	}
 
 	/**
@@ -342,7 +316,7 @@ class URLGenerator implements IURLGenerator {
 	 */
 	public function getBaseUrl(): string {
 		// BaseUrl can be equal to 'http(s)://' during the first steps of the initial setup.
-		if ($this->baseUrl === null || $this->baseUrl === "http://" || $this->baseUrl === "https://") {
+		if ($this->baseUrl === null || $this->baseUrl === 'http://' || $this->baseUrl === 'https://') {
 			$this->baseUrl = $this->request->getServerProtocol() . '://' . $this->request->getServerHost() . \OC::$WEBROOT;
 		}
 		return $this->baseUrl;

@@ -3,37 +3,19 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Phil Davis <phil.davis@inf.org>
- * @author Robin Appelman <robin@icewind.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Activity;
 
+use OCP\Activity\Exceptions\InvalidValueException;
 use OCP\Activity\IEvent;
 use OCP\RichObjectStrings\InvalidObjectExeption;
+use OCP\RichObjectStrings\IRichTextFormatter;
 use OCP\RichObjectStrings\IValidator;
 
 class Event implements IEvent {
-
 	/** @var string */
 	protected $app = '';
 	/** @var string */
@@ -79,27 +61,19 @@ class Event implements IEvent {
 
 	/** @var IEvent|null */
 	protected $child;
-	/** @var IValidator */
-	protected $richValidator;
 
-	/**
-	 * @param IValidator $richValidator
-	 */
-	public function __construct(IValidator $richValidator) {
-		$this->richValidator = $richValidator;
+	public function __construct(
+		protected IValidator $richValidator,
+		protected IRichTextFormatter $richTextFormatter,
+	) {
 	}
 
 	/**
-	 * Set the app of the activity
-	 *
-	 * @param string $app
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the app id is invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setApp(string $app): IEvent {
 		if ($app === '' || isset($app[32])) {
-			throw new \InvalidArgumentException('The given app is invalid');
+			throw new InvalidValueException('app');
 		}
 		$this->app = $app;
 		return $this;
@@ -113,16 +87,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the type of the activity
-	 *
-	 * @param string $type
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the type is invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setType(string $type): IEvent {
 		if ($type === '' || isset($type[255])) {
-			throw new \InvalidArgumentException('The given type is invalid');
+			throw new InvalidValueException('type');
 		}
 		$this->type = $type;
 		return $this;
@@ -136,16 +105,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the affected user of the activity
-	 *
-	 * @param string $affectedUser
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the affected user is invalid
-	 * @since 8.2.0
+	 *  {@inheritDoc}
 	 */
 	public function setAffectedUser(string $affectedUser): IEvent {
 		if ($affectedUser === '' || isset($affectedUser[64])) {
-			throw new \InvalidArgumentException('The given affected user is invalid');
+			throw new InvalidValueException('affectedUser');
 		}
 		$this->affectedUser = $affectedUser;
 		return $this;
@@ -159,16 +123,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the author of the activity
-	 *
-	 * @param string $author
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the author is invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setAuthor(string $author): IEvent {
 		if (isset($author[64])) {
-			throw new \InvalidArgumentException('The given author user is invalid');
+			throw new InvalidValueException('author');
 		}
 		$this->author = $author;
 		return $this;
@@ -182,14 +141,12 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the timestamp of the activity
-	 *
-	 * @param int $timestamp
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the timestamp is invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setTimestamp(int $timestamp): IEvent {
+		if ($timestamp < 0) {
+			throw new InvalidValueException('timestamp');
+		}
 		$this->timestamp = $timestamp;
 		return $this;
 	}
@@ -202,17 +159,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the subject of the activity
-	 *
-	 * @param string $subject
-	 * @param array $parameters
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the subject or parameters are invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setSubject(string $subject, array $parameters = []): IEvent {
 		if (isset($subject[255])) {
-			throw new \InvalidArgumentException('The given subject is invalid');
+			throw new InvalidValueException('subject');
 		}
 		$this->subject = $subject;
 		$this->subjectParameters = $parameters;
@@ -234,14 +185,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @param string $subject
-	 * @return $this
-	 * @throws \InvalidArgumentException if the subject is invalid
-	 * @since 11.0.0
+	 * {@inheritDoc}
 	 */
 	public function setParsedSubject(string $subject): IEvent {
 		if ($subject === '') {
-			throw new \InvalidArgumentException('The given parsed subject is invalid');
+			throw new InvalidValueException('parsedSubject');
 		}
 		$this->subjectParsed = $subject;
 		return $this;
@@ -256,18 +204,22 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @param string $subject
-	 * @param array $parameters
-	 * @return $this
-	 * @throws \InvalidArgumentException if the subject or parameters are invalid
-	 * @since 11.0.0
+	 * {@inheritDoc}
 	 */
 	public function setRichSubject(string $subject, array $parameters = []): IEvent {
 		if ($subject === '') {
-			throw new \InvalidArgumentException('The given parsed subject is invalid');
+			throw new InvalidValueException('richSubject');
 		}
 		$this->subjectRich = $subject;
 		$this->subjectRichParameters = $parameters;
+
+		if ($this->subjectParsed === '') {
+			try {
+				$this->subjectParsed = $this->richTextFormatter->richToParsed($subject, $parameters);
+			} catch (\InvalidArgumentException $e) {
+				throw new InvalidValueException('richSubjectParameters', $e);
+			}
+		}
 
 		return $this;
 	}
@@ -281,7 +233,7 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @return array[]
+	 * @return array<string, array<string, string>>
 	 * @since 11.0.0
 	 */
 	public function getRichSubjectParameters(): array {
@@ -289,17 +241,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the message of the activity
-	 *
-	 * @param string $message
-	 * @param array $parameters
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the message or parameters are invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setMessage(string $message, array $parameters = []): IEvent {
 		if (isset($message[255])) {
-			throw new \InvalidArgumentException('The given message is invalid');
+			throw new InvalidValueException('message');
 		}
 		$this->message = $message;
 		$this->messageParameters = $parameters;
@@ -321,10 +267,7 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @param string $message
-	 * @return $this
-	 * @throws \InvalidArgumentException if the message is invalid
-	 * @since 11.0.0
+	 * {@inheritDoc}
 	 */
 	public function setParsedMessage(string $message): IEvent {
 		$this->messageParsed = $message;
@@ -340,15 +283,19 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @param string $message
-	 * @param array $parameters
-	 * @return $this
-	 * @throws \InvalidArgumentException if the subject or parameters are invalid
-	 * @since 11.0.0
+	 * {@inheritDoc}
 	 */
 	public function setRichMessage(string $message, array $parameters = []): IEvent {
 		$this->messageRich = $message;
 		$this->messageRichParameters = $parameters;
+
+		if ($this->messageParsed === '') {
+			try {
+				$this->messageParsed = $this->richTextFormatter->richToParsed($message, $parameters);
+			} catch (\InvalidArgumentException $e) {
+				throw new InvalidValueException('richMessageParameters', $e);
+			}
+		}
 
 		return $this;
 	}
@@ -362,7 +309,7 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @return array[]
+	 * @return array<string, array<string, string>>
 	 * @since 11.0.0
 	 */
 	public function getRichMessageParameters(): array {
@@ -370,21 +317,14 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the object of the activity
-	 *
-	 * @param string $objectType
-	 * @param int $objectId
-	 * @param string $objectName
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the object is invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setObject(string $objectType, int $objectId, string $objectName = ''): IEvent {
 		if (isset($objectType[255])) {
-			throw new \InvalidArgumentException('The given object type is invalid');
+			throw new InvalidValueException('objectType');
 		}
 		if (isset($objectName[4000])) {
-			throw new \InvalidArgumentException('The given object name is invalid');
+			throw new InvalidValueException('objectName');
 		}
 		$this->objectType = $objectType;
 		$this->objectId = $objectId;
@@ -414,16 +354,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * Set the link of the activity
-	 *
-	 * @param string $link
-	 * @return IEvent
-	 * @throws \InvalidArgumentException if the link is invalid
-	 * @since 8.2.0
+	 * {@inheritDoc}
 	 */
 	public function setLink(string $link): IEvent {
 		if (isset($link[4000])) {
-			throw new \InvalidArgumentException('The given link is invalid');
+			throw new InvalidValueException('link');
 		}
 		$this->link = $link;
 		return $this;
@@ -437,14 +372,11 @@ class Event implements IEvent {
 	}
 
 	/**
-	 * @param string $icon
-	 * @return $this
-	 * @throws \InvalidArgumentException if the icon is invalid
-	 * @since 11.0.0
+	 * {@inheritDoc}
 	 */
 	public function setIcon(string $icon): IEvent {
 		if (isset($icon[4000])) {
-			throw new \InvalidArgumentException('The given icon is invalid');
+			throw new InvalidValueException('icon');
 		}
 		$this->icon = $icon;
 		return $this;

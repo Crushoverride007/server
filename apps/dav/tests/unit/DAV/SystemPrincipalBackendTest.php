@@ -1,27 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\DAV;
 
@@ -35,7 +17,7 @@ class SystemPrincipalBackendTest extends TestCase {
 	 * @param $expected
 	 * @param $prefix
 	 */
-	public function testGetPrincipalsByPrefix($expected, $prefix) {
+	public function testGetPrincipalsByPrefix($expected, $prefix): void {
 		$backend = new SystemPrincipalBackend();
 		$result = $backend->getPrincipalsByPrefix($prefix);
 		$this->assertEquals($expected, $result);
@@ -61,7 +43,7 @@ class SystemPrincipalBackendTest extends TestCase {
 	 * @param $expected
 	 * @param $path
 	 */
-	public function testGetPrincipalByPath($expected, $path) {
+	public function testGetPrincipalByPath($expected, $path): void {
 		$backend = new SystemPrincipalBackend();
 		$result = $backend->getPrincipalByPath($path);
 		$this->assertEquals($expected, $result);
@@ -85,7 +67,7 @@ class SystemPrincipalBackendTest extends TestCase {
 	 * @param string $principal
 	 * @throws \Sabre\DAV\Exception
 	 */
-	public function testGetGroupMemberSetExceptional($principal) {
+	public function testGetGroupMemberSetExceptional($principal): void {
 		$this->expectException(\Sabre\DAV\Exception::class);
 		$this->expectExceptionMessage('Principal not found');
 
@@ -103,7 +85,7 @@ class SystemPrincipalBackendTest extends TestCase {
 	/**
 	 * @throws \Sabre\DAV\Exception
 	 */
-	public function testGetGroupMemberSet() {
+	public function testGetGroupMemberSet(): void {
 		$backend = new SystemPrincipalBackend();
 		$result = $backend->getGroupMemberSet('principals/system/system');
 		$this->assertEquals(['principals/system/system'], $result);
@@ -115,7 +97,7 @@ class SystemPrincipalBackendTest extends TestCase {
 	 * @param string $principal
 	 * @throws \Sabre\DAV\Exception
 	 */
-	public function testGetGroupMembershipExceptional($principal) {
+	public function testGetGroupMembershipExceptional($principal): void {
 		$this->expectException(\Sabre\DAV\Exception::class);
 		$this->expectExceptionMessage('Principal not found');
 
@@ -132,7 +114,7 @@ class SystemPrincipalBackendTest extends TestCase {
 	/**
 	 * @throws \Sabre\DAV\Exception
 	 */
-	public function testGetGroupMembership() {
+	public function testGetGroupMembership(): void {
 		$backend = new SystemPrincipalBackend();
 		$result = $backend->getGroupMembership('principals/system/system');
 		$this->assertEquals([], $result);

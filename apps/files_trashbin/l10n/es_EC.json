@@ -1,18 +1,15 @@
 { "translations": {
-    "Deleted files" : "Archivos borrados",
     "restored" : "restaurado",
+    "Deleted files" : "Archivos borrados",
+    "Deleted files and folders in the trash bin (may expire during export if you are low on storage space)" : "Archivos y carpetas eliminados en la papelera de reciclaje (pueden expirar durante la exportación si tienes poco espacio de almacenamiento)",
     "Restore" : "Restaurar",
-    "Delete permanently" : "Borrar permanentemente",
-    "This operation is forbidden" : "Esta opración está prohibida",
-    "This directory is unavailable, please check the logs or contact the administrator" : "Este directorio no está disponible, por favor verifica las bitácoras o contacta al administrador",
-    "No deleted files" : "No hay archivos borrados",
-    "You will be able to recover deleted files from here" : "Podrás recuperar archivos borrados desde aquí",
-    "No entries found in this folder" : "No se encontraron elementos en esta carpeta",
-    "Select all" : "Seleccionar todo",
-    "Name" : "Nombre",
-    "Actions" : "Acciones",
+    "Unknown" : "Desconocido",
+    "All files" : "Todos los archivos",
     "Deleted" : "Borrado",
-    "Delete" : "Borrar",
-    "Error while removing file from trashbin" : "Error al eliminar el archivo de la papelera"
+    "A long time ago" : "Hace mucho tiempo.",
+    "Cancel" : "Cancelar",
+    "List of files that have been deleted." : "Lista de archivos que han sido eliminados.",
+    "No deleted files" : "No hay archivos borrados",
+    "Files and folders you have deleted will show up here" : "Los archivos y carpetas que has eliminado aparecerán aquí. "
 },"pluralForm" :"nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 ? 1 : 2;"
 }

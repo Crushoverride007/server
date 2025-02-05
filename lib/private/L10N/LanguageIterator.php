@@ -3,26 +3,8 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2018 Arthur Schiwon <blizzz@arthur-schiwon.de>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\L10N;
 
@@ -63,8 +45,8 @@ class LanguageIterator implements ILanguageIterator {
 					return $forcedLang;
 				}
 				$this->next();
-			/** @noinspection PhpMissingBreakStatementInspection */
-			// no break
+				/** @noinspection PhpMissingBreakStatementInspection */
+				// no break
 			case 1:
 				$forcedLang = $this->config->getSystemValue('force_language', false);
 				if (is_string($forcedLang)
@@ -73,16 +55,16 @@ class LanguageIterator implements ILanguageIterator {
 					return $truncated;
 				}
 				$this->next();
-			/** @noinspection PhpMissingBreakStatementInspection */
-			// no break
+				/** @noinspection PhpMissingBreakStatementInspection */
+				// no break
 			case 2:
 				$userLang = $this->config->getUserValue($this->user->getUID(), 'core', 'lang', null);
 				if (is_string($userLang)) {
 					return $userLang;
 				}
 				$this->next();
-			/** @noinspection PhpMissingBreakStatementInspection */
-			// no break
+				/** @noinspection PhpMissingBreakStatementInspection */
+				// no break
 			case 3:
 				$userLang = $this->config->getUserValue($this->user->getUID(), 'core', 'lang', null);
 				if (is_string($userLang)
@@ -93,10 +75,10 @@ class LanguageIterator implements ILanguageIterator {
 				$this->next();
 				// no break
 			case 4:
-				return $this->config->getSystemValue('default_language', 'en');
-			/** @noinspection PhpMissingBreakStatementInspection */
+				return $this->config->getSystemValueString('default_language', 'en');
+				/** @noinspection PhpMissingBreakStatementInspection */
 			case 5:
-				$defaultLang = $this->config->getSystemValue('default_language', 'en');
+				$defaultLang = $this->config->getSystemValueString('default_language', 'en');
 				if (($truncated = $this->getTruncatedLanguage($defaultLang)) !== $defaultLang) {
 					return $truncated;
 				}

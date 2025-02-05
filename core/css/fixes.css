@@ -1,7 +1,4 @@
-/* ---- BROWSER-SPECIFIC FIXES ---- */
-/* remove dotted outlines in Firefox */
-::-moz-focus-inner {
-  border: 0;
-}
-
-/*# sourceMappingURL=fixes.css.map */
+/*!
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */::-moz-focus-inner{border:0}/*# sourceMappingURL=fixes.css.map */

@@ -1,58 +1,39 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Lukas Reschke <lukas@statuscode.ch>
- *
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\OAuth2\Tests\Controller;
 
+use OC\Core\Controller\ClientFlowLoginController;
 use OCA\OAuth2\Controller\LoginRedirectorController;
 use OCA\OAuth2\Db\Client;
 use OCA\OAuth2\Db\ClientMapper;
 use OCA\OAuth2\Exceptions\ClientNotFoundException;
 use OCP\AppFramework\Http\RedirectResponse;
 use OCP\AppFramework\Http\TemplateResponse;
+use OCP\IAppConfig;
 use OCP\IL10N;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
+use OCP\Security\ISecureRandom;
+use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
 
 /**
  * @group DB
  */
 class LoginRedirectorControllerTest extends TestCase {
-	/** @var IRequest|\PHPUnit\Framework\MockObject\MockObject */
-	private $request;
-	/** @var IURLGenerator|\PHPUnit\Framework\MockObject\MockObject */
-	private $urlGenerator;
-	/** @var ClientMapper|\PHPUnit\Framework\MockObject\MockObject */
-	private $clientMapper;
-	/** @var ISession|\PHPUnit\Framework\MockObject\MockObject */
-	private $session;
-	/** @var LoginRedirectorController */
-	private $loginRedirectorController;
-	/** @var IL10N */
-	private $l;
+	private IRequest&MockObject $request;
+	private IURLGenerator&MockObject $urlGenerator;
+	private ClientMapper&MockObject $clientMapper;
+	private ISession&MockObject $session;
+	private IL10N&MockObject $l;
+	private ISecureRandom&MockObject $random;
+	private IAppConfig&MockObject $appConfig;
+
+	private LoginRedirectorController $loginRedirectorController;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -62,6 +43,8 @@ class LoginRedirectorControllerTest extends TestCase {
 		$this->clientMapper = $this->createMock(ClientMapper::class);
 		$this->session = $this->createMock(ISession::class);
 		$this->l = $this->createMock(IL10N::class);
+		$this->random = $this->createMock(ISecureRandom::class);
+		$this->appConfig = $this->createMock(IAppConfig::class);
 
 		$this->loginRedirectorController = new LoginRedirectorController(
 			'oauth2',
@@ -69,11 +52,13 @@ class LoginRedirectorControllerTest extends TestCase {
 			$this->urlGenerator,
 			$this->clientMapper,
 			$this->session,
-			$this->l
+			$this->l,
+			$this->random,
+			$this->appConfig,
 		);
 	}
 
-	public function testAuthorize() {
+	public function testAuthorize(): void {
 		$client = new Client();
 		$client->setClientIdentifier('MyClientIdentifier');
 		$this->clientMapper
@@ -100,7 +85,54 @@ class LoginRedirectorControllerTest extends TestCase {
 		$this->assertEquals($expected, $this->loginRedirectorController->authorize('MyClientId', 'MyState', 'code'));
 	}
 
-	public function testAuthorizeWrongResponseType() {
+	public function testAuthorizeSkipPicker(): void {
+		$client = new Client();
+		$client->setName('MyClientName');
+		$client->setClientIdentifier('MyClientIdentifier');
+		$this->clientMapper
+			->expects($this->once())
+			->method('getByIdentifier')
+			->with('MyClientId')
+			->willReturn($client);
+		$this->session
+			->expects(static::exactly(2))
+			->method('set')
+			->willReturnCallback(function (string $key, string $value): void {
+				switch ([$key, $value]) {
+					case ['oauth.state', 'MyState']:
+					case [ClientFlowLoginController::STATE_NAME, 'MyStateToken']:
+						/* Expected */
+						break;
+					default:
+						throw new LogicException();
+				}
+			});
+		$this->appConfig
+			->expects(static::once())
+			->method('getValueArray')
+			->with('oauth2', 'skipAuthPickerApplications', [])
+			->willReturn(['MyClientName']);
+		$this->random
+			->expects(static::once())
+			->method('generate')
+			->willReturn('MyStateToken');
+		$this->urlGenerator
+			->expects($this->once())
+			->method('linkToRouteAbsolute')
+			->with(
+				'core.ClientFlowLogin.grantPage',
+				[
+					'stateToken' => 'MyStateToken',
+					'clientIdentifier' => 'MyClientIdentifier',
+				]
+			)
+			->willReturn('https://example.com/?clientIdentifier=foo');
+
+		$expected = new RedirectResponse('https://example.com/?clientIdentifier=foo');
+		$this->assertEquals($expected, $this->loginRedirectorController->authorize('MyClientId', 'MyState', 'code'));
+	}
+
+	public function testAuthorizeWrongResponseType(): void {
 		$client = new Client();
 		$client->setClientIdentifier('MyClientIdentifier');
 		$client->setRedirectUri('http://foo.bar');
@@ -118,7 +150,7 @@ class LoginRedirectorControllerTest extends TestCase {
 		$this->assertEquals($expected, $this->loginRedirectorController->authorize('MyClientId', 'MyState', 'wrongcode'));
 	}
 
-	public function testClientNotFound() {
+	public function testClientNotFound(): void {
 		$clientNotFound = new ClientNotFoundException('could not find client test123', 0);
 		$this->clientMapper
 			->expects($this->once())

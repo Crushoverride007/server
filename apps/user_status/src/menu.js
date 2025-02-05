@@ -1,65 +1,38 @@
 /**
- * @copyright Copyright (c) 2020 Georg Ehrke
- *
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author John Molakvoæ <skjnldsv@protonmail.com>
- * @author Julius Härtl <jus@bitgrid.net>
- *
- * @license AGPL-3.0-or-later
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { getCSPNonce } from '@nextcloud/auth'
+import { subscribe } from '@nextcloud/event-bus'
 import Vue from 'vue'
-import { getRequestToken } from '@nextcloud/auth'
-import UserStatus from './UserStatus'
-import store from './store'
-import NcAvatar from '@nextcloud/vue/dist/Components/NcAvatar'
-import { loadState } from '@nextcloud/initial-state'
+
+import UserStatus from './UserStatus.vue'
+import store from './store/index.js'
 
 // eslint-disable-next-line camelcase
-__webpack_nonce__ = btoa(getRequestToken())
+__webpack_nonce__ = getCSPNonce()
 
 Vue.prototype.t = t
 Vue.prototype.$t = t
 
-const avatarDiv = document.getElementById('avatardiv-menu')
-const userStatusData = loadState('user_status', 'status')
-const propsData = {
-	preloadedUserStatus: {
-		message: userStatusData.message,
-		icon: userStatusData.icon,
-		status: userStatusData.status,
-	},
-	user: avatarDiv.dataset.user,
-	displayName: avatarDiv.dataset.displayname,
-	disableMenu: true,
-	disableTooltip: true,
+const mountPoint = document.getElementById('user_status-menu-entry')
+
+const mountMenuEntry = () => {
+	const mountPoint = document.getElementById('user_status-menu-entry')
+	// eslint-disable-next-line no-new
+	new Vue({
+		el: mountPoint,
+		render: h => h(UserStatus),
+		store,
+	})
 }
 
-const NcAvatarInMenu = Vue.extend(NcAvatar)
-new NcAvatarInMenu({ propsData }).$mount('#avatardiv-menu')
-
-// Register settings menu entry
-export default new Vue({
-	el: 'li[data-id="user_status-menuitem"]',
-	// eslint-disable-next-line vue/match-component-file-name
-	name: 'UserStatusRoot',
-	render: h => h(UserStatus),
-	store,
-})
+if (mountPoint) {
+	mountMenuEntry()
+} else {
+	subscribe('core:user-menu:mounted', mountMenuEntry)
+}
 
 // Register dashboard status
 document.addEventListener('DOMContentLoaded', function() {

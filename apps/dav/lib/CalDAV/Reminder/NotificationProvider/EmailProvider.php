@@ -3,31 +3,8 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2019, Thomas Citharel
- * @copyright Copyright (c) 2019, Georg Ehrke
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Richard Steinmetz <richard@steinmetz.cloud>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Citharel <nextcloud@tcit.fr>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\CalDAV\Reminder\NotificationProvider;
 
@@ -35,10 +12,12 @@ use DateTime;
 use OCP\IConfig;
 use OCP\IL10N;
 use OCP\IURLGenerator;
+use OCP\IUser;
 use OCP\L10N\IFactory as L10NFactory;
+use OCP\Mail\Headers\AutoSubmitted;
 use OCP\Mail\IEMailTemplate;
 use OCP\Mail\IMailer;
-use OCP\IUser;
+use OCP\Util;
 use Psr\Log\LoggerInterface;
 use Sabre\VObject;
 use Sabre\VObject\Component\VEvent;
@@ -51,36 +30,46 @@ use Sabre\VObject\Property;
  * @package OCA\DAV\CalDAV\Reminder\NotificationProvider
  */
 class EmailProvider extends AbstractProvider {
-
 	/** @var string */
 	public const NOTIFICATION_TYPE = 'EMAIL';
 
-	private IMailer $mailer;
-
-	public function __construct(IConfig $config,
-								IMailer $mailer,
-								LoggerInterface $logger,
-								L10NFactory $l10nFactory,
-								IURLGenerator $urlGenerator) {
+	public function __construct(
+		IConfig $config,
+		private IMailer $mailer,
+		LoggerInterface $logger,
+		L10NFactory $l10nFactory,
+		IURLGenerator $urlGenerator,
+	) {
 		parent::__construct($logger, $l10nFactory, $urlGenerator, $config);
-		$this->mailer = $mailer;
 	}
 
 	/**
 	 * Send out notification via email
 	 *
 	 * @param VEvent $vevent
-	 * @param string $calendarDisplayName
+	 * @param string|null $calendarDisplayName
+	 * @param string[] $principalEmailAddresses
 	 * @param array $users
 	 * @throws \Exception
 	 */
 	public function send(VEvent $vevent,
-						 string $calendarDisplayName,
-						 array $users = []):void {
+		?string $calendarDisplayName,
+		array $principalEmailAddresses,
+		array $users = []):void {
 		$fallbackLanguage = $this->getFallbackLanguage();
 
+		$organizerEmailAddress = null;
+		if (isset($vevent->ORGANIZER)) {
+			$organizerEmailAddress = $this->getEMailAddressOfAttendee($vevent->ORGANIZER);
+		}
+
 		$emailAddressesOfSharees = $this->getEMailAddressesOfAllUsersWithWriteAccessToCalendar($users);
-		$emailAddressesOfAttendees = $this->getAllEMailAddressesFromEvent($vevent);
+		$emailAddressesOfAttendees = [];
+		if (count($principalEmailAddresses) === 0
+			|| ($organizerEmailAddress && in_array($organizerEmailAddress, $principalEmailAddresses, true))
+		) {
+			$emailAddressesOfAttendees = $this->getAllEMailAddressesFromEvent($vevent);
+		}
 
 		// Quote from php.net:
 		// If the input arrays have the same string keys, then the later value for that key will overwrite the previous one.
@@ -98,12 +87,12 @@ class EmailProvider extends AbstractProvider {
 				$lang = $fallbackLanguage;
 			}
 			$l10n = $this->getL10NForLang($lang);
-			$fromEMail = \OCP\Util::getDefaultEmailAddress('reminders-noreply');
+			$fromEMail = Util::getDefaultEmailAddress('reminders-noreply');
 
 			$template = $this->mailer->createEMailTemplate('dav.calendarReminder');
 			$template->addHeader();
 			$this->addSubjectAndHeading($template, $l10n, $vevent);
-			$this->addBulletList($template, $l10n, $calendarDisplayName, $vevent);
+			$this->addBulletList($template, $l10n, $calendarDisplayName ?? $this->getCalendarDisplayNameFallback($lang), $vevent);
 			$template->addFooter();
 
 			foreach ($emailAddresses as $emailAddress) {
@@ -119,6 +108,7 @@ class EmailProvider extends AbstractProvider {
 				}
 				$message->setTo([$emailAddress]);
 				$message->useTemplate($template);
+				$message->setAutoSubmitted(AutoSubmitted::VALUE_AUTO_GENERATED);
 
 				try {
 					$failed = $this->mailer->send($message);
@@ -149,9 +139,9 @@ class EmailProvider extends AbstractProvider {
 	 * @param array $eventData
 	 */
 	private function addBulletList(IEMailTemplate $template,
-								   IL10N $l10n,
-								   string $calendarDisplayName,
-								   VEvent $vevent):void {
+		IL10N $l10n,
+		string $calendarDisplayName,
+		VEvent $vevent):void {
 		$template->addBodyListItem($calendarDisplayName, $l10n->t('Calendar:'),
 			$this->getAbsoluteImagePath('actions/info.png'));
 
@@ -159,11 +149,11 @@ class EmailProvider extends AbstractProvider {
 			$this->getAbsoluteImagePath('places/calendar.png'));
 
 		if (isset($vevent->LOCATION)) {
-			$template->addBodyListItem((string) $vevent->LOCATION, $l10n->t('Where:'),
+			$template->addBodyListItem((string)$vevent->LOCATION, $l10n->t('Where:'),
 				$this->getAbsoluteImagePath('actions/address.png'));
 		}
 		if (isset($vevent->DESCRIPTION)) {
-			$template->addBodyListItem((string) $vevent->DESCRIPTION, $l10n->t('Description:'),
+			$template->addBodyListItem((string)$vevent->DESCRIPTION, $l10n->t('Description:'),
 				$this->getAbsoluteImagePath('actions/more.png'));
 		}
 	}
@@ -190,7 +180,7 @@ class EmailProvider extends AbstractProvider {
 
 		$organizerEMail = substr($organizer->getValue(), 7);
 
-		if ($organizerEMail === false || !$this->mailer->validateMailAddress($organizerEMail)) {
+		if (!$this->mailer->validateMailAddress($organizerEMail)) {
 			return null;
 		}
 
@@ -207,7 +197,7 @@ class EmailProvider extends AbstractProvider {
 	 * @return array<string, string[]>
 	 */
 	private function sortEMailAddressesByLanguage(array $emails,
-												  string $defaultLanguage):array {
+		string $defaultLanguage):array {
 		$sortedByLanguage = [];
 
 		foreach ($emails as $emailAddress => $parameters) {
@@ -261,7 +251,7 @@ class EmailProvider extends AbstractProvider {
 					foreach ($emailAddressesOfDelegates as $addressesOfDelegate) {
 						if (strcasecmp($addressesOfDelegate, 'mailto:') === 0) {
 							$delegateEmail = substr($addressesOfDelegate, 7);
-							if ($delegateEmail !== false && $this->mailer->validateMailAddress($delegateEmail)) {
+							if ($this->mailer->validateMailAddress($delegateEmail)) {
 								$emailAddresses[$delegateEmail] = [];
 							}
 						}
@@ -321,7 +311,7 @@ class EmailProvider extends AbstractProvider {
 			return null;
 		}
 		$attendeeEMail = substr($attendee->getValue(), 7);
-		if ($attendeeEMail === false || !$this->mailer->validateMailAddress($attendeeEMail)) {
+		if (!$this->mailer->validateMailAddress($attendeeEMail)) {
 			return null;
 		}
 
@@ -422,7 +412,7 @@ class EmailProvider extends AbstractProvider {
 	}
 
 	private function isDayEqual(DateTime $dtStart,
-								DateTime $dtEnd):bool {
+		DateTime $dtEnd):bool {
 		return $dtStart->format('Y-m-d') === $dtEnd->format('Y-m-d');
 	}
 

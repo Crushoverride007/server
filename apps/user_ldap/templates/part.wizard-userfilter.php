@@ -1,3 +1,11 @@
+<?php
+
+/**
+ * SPDX-FileCopyrightText: 2017-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2013-2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+?>
 <fieldset id="ldapWizard2">
 	<div>
 		<p>
@@ -30,13 +38,21 @@
 		<p class="ldapManyGroupsSupport hidden">
 			<label></label>
 			<select class="ldapGroupList ldapGroupListAvailable" multiple="multiple"
+					aria-describedby="ldapGroupListAvailable_instructions"
 					title="<?php p($l->t('Available groups'));?>"></select>
+			<p class="hidden-visually" id="ldapGroupListAvailable_instructions">
+				<?php p($l->t('Available groups'));?>
+			</p>
 			<span class="buttonSpan">
 				<button class="ldapGroupListSelect" type="button">&gt;</button><br/>
 				<button class="ldapGroupListDeselect" type="button">&lt;</button>
 			</span>
 			<select class="ldapGroupList ldapGroupListSelected" multiple="multiple"
+					aria-describedby="ldapGroupListSelected_instructions"
 					title="<?php p($l->t('Selected groups'));?>"></select>
+			<p class="hidden-visually" id="ldapGroupListSelected_instructions">
+				<?php p($l->t('Selected groups'));?>
+			</p>
 		</p>
 		<p>
 			<label><a id='toggleRawUserFilter' class='ldapToggle'>↓ <?php p($l->t('Edit LDAP Query'));?></a></label>
@@ -49,8 +65,12 @@
 			<textarea type="text" id="ldap_userlist_filter" name="ldap_userlist_filter"
 				class="ldapFilterInputElement"
 				placeholder="<?php p($l->t('Edit LDAP Query'));?>"
+				aria-describedby="ldap_userlist_filter_instructions"
 				title="<?php p($l->t('The filter specifies which LDAP users shall have access to the %s instance.', [$theme->getName()]));?>">
 			</textarea>
+		<p class="hidden-visually" id="ldap_userlist_filter_instructions">
+			<?php p($l->t('The filter specifies which LDAP users shall have access to the %s instance.', [$theme->getName()]));?>
+		</p>
 		</p>
 		<p>
 			<div class="ldapWizardInfo invisible">&nbsp;</div>

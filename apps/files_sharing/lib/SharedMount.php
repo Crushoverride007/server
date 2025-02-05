@@ -1,88 +1,54 @@
 <?php
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Frédéric Fortier <frederic.fortier@oronospolytechnique.com>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace OCA\Files_Sharing;
 
-use OCP\Cache\CappedMemoryCache;
 use OC\Files\Filesystem;
 use OC\Files\Mount\MountPoint;
 use OC\Files\Mount\MoveableMount;
 use OC\Files\View;
+use OCA\Files_Sharing\Exceptions\BrokenPath;
+use OCP\Cache\CappedMemoryCache;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\Files\Events\InvalidateMountCacheEvent;
 use OCP\Files\Storage\IStorageFactory;
 use OCP\ICache;
 use OCP\IUser;
+use OCP\Server;
 use OCP\Share\Events\VerifyMountPointEvent;
+use OCP\Share\IShare;
+use Psr\Log\LoggerInterface;
 
 /**
  * Shared mount points can be moved by the user
  */
-class SharedMount extends MountPoint implements MoveableMount {
+class SharedMount extends MountPoint implements MoveableMount, ISharedMountPoint {
 	/**
-	 * @var \OCA\Files_Sharing\SharedStorage $storage
+	 * @var SharedStorage $storage
 	 */
 	protected $storage = null;
 
-	/**
-	 * @var \OC\Files\View
-	 */
-	private $recipientView;
-
-	private IUser $user;
-
-	/** @var \OCP\Share\IShare */
+	/** @var IShare */
 	private $superShare;
 
-	/** @var \OCP\Share\IShare[] */
+	/** @var IShare[] */
 	private $groupedShares;
-
-	private IEventDispatcher $eventDispatcher;
-
-	private ICache $cache;
 
 	public function __construct(
 		$storage,
 		array $mountpoints,
 		$arguments,
 		IStorageFactory $loader,
-		View $recipientView,
+		private View $recipientView,
 		CappedMemoryCache $folderExistCache,
-		IEventDispatcher $eventDispatcher,
-		IUser $user,
-		ICache $cache
+		private IEventDispatcher $eventDispatcher,
+		private IUser $user,
+		private ICache $cache,
 	) {
-		$this->user = $user;
-		$this->recipientView = $recipientView;
-		$this->eventDispatcher = $eventDispatcher;
-		$this->cache = $cache;
-
 		$this->superShare = $arguments['superShare'];
 		$this->groupedShares = $arguments['groupedShares'];
 
@@ -94,17 +60,17 @@ class SharedMount extends MountPoint implements MoveableMount {
 	/**
 	 * check if the parent folder exists otherwise move the mount point up
 	 *
-	 * @param \OCP\Share\IShare $share
+	 * @param IShare $share
 	 * @param SharedMount[] $mountpoints
 	 * @param CappedMemoryCache<bool> $folderExistCache
 	 * @return string
 	 */
 	private function verifyMountPoint(
-		\OCP\Share\IShare $share,
+		IShare $share,
 		array $mountpoints,
-		CappedMemoryCache $folderExistCache
+		CappedMemoryCache $folderExistCache,
 	) {
-		$cacheKey = $this->user->getUID() . '/' . $share->getTarget();
+		$cacheKey = $this->user->getUID() . '/' . $share->getId() . '/' . $share->getTarget();
 		$cached = $this->cache->get($cacheKey);
 		if ($cached !== null) {
 			return $cached;
@@ -117,8 +83,9 @@ class SharedMount extends MountPoint implements MoveableMount {
 		$this->eventDispatcher->dispatchTyped($event);
 		$parent = $event->getParent();
 
-		if ($folderExistCache->hasKey($parent)) {
-			$parentExists = $folderExistCache->get($parent);
+		$cached = $folderExistCache->get($parent);
+		if ($cached) {
+			$parentExists = $cached;
 		} else {
 			$parentExists = $this->recipientView->is_dir($parent);
 			$folderExistCache->set($parent, $parentExists);
@@ -128,7 +95,7 @@ class SharedMount extends MountPoint implements MoveableMount {
 		}
 
 		$newMountPoint = $this->generateUniqueTarget(
-			\OC\Files\Filesystem::normalizePath($parent . '/' . $mountPoint),
+			Filesystem::normalizePath($parent . '/' . $mountPoint),
 			$this->recipientView,
 			$mountpoints
 		);
@@ -146,7 +113,7 @@ class SharedMount extends MountPoint implements MoveableMount {
 	 * update fileTarget in the database if the mount point changed
 	 *
 	 * @param string $newPath
-	 * @param \OCP\Share\IShare $share
+	 * @param IShare $share
 	 * @return bool
 	 */
 	private function updateFileTarget($newPath, &$share) {
@@ -189,7 +156,7 @@ class SharedMount extends MountPoint implements MoveableMount {
 	 *
 	 * @param string $path the absolute path
 	 * @return string e.g. turns '/admin/files/test.txt' into '/test.txt'
-	 * @throws \OCA\Files_Sharing\Exceptions\BrokenPath
+	 * @throws BrokenPath
 	 */
 	protected function stripUserFilesPath($path) {
 		$trimmed = ltrim($path, '/');
@@ -197,8 +164,8 @@ class SharedMount extends MountPoint implements MoveableMount {
 
 		// it is not a file relative to data/user/files
 		if (count($split) < 3 || $split[1] !== 'files') {
-			\OC::$server->getLogger()->error('Can not strip userid and "files/" from path: ' . $path, ['app' => 'files_sharing']);
-			throw new \OCA\Files_Sharing\Exceptions\BrokenPath('Path does not start with /user/files', 10);
+			Server::get(LoggerInterface::class)->error('Can not strip userid and "files/" from path: ' . $path, ['app' => 'files_sharing']);
+			throw new BrokenPath('Path does not start with /user/files', 10);
 		}
 
 		// skip 'user' and 'files'
@@ -225,7 +192,13 @@ class SharedMount extends MountPoint implements MoveableMount {
 			$this->setMountPoint($target);
 			$this->storage->setMountPoint($relTargetPath);
 		} catch (\Exception $e) {
-			\OC::$server->getLogger()->logException($e, ['app' => 'files_sharing', 'message' => 'Could not rename mount point for shared folder "' . $this->getMountPoint() . '" to "' . $target . '"']);
+			Server::get(LoggerInterface::class)->error(
+				'Could not rename mount point for shared folder "' . $this->getMountPoint() . '" to "' . $target . '"',
+				[
+					'app' => 'files_sharing',
+					'exception' => $e,
+				]
+			);
 		}
 
 		return $result;
@@ -237,8 +210,8 @@ class SharedMount extends MountPoint implements MoveableMount {
 	 * @return bool
 	 */
 	public function removeMount() {
-		$mountManager = \OC\Files\Filesystem::getMountManager();
-		/** @var \OCA\Files_Sharing\SharedStorage $storage */
+		$mountManager = Filesystem::getMountManager();
+		/** @var SharedStorage $storage */
 		$storage = $this->getStorage();
 		$result = $storage->unshareStorage();
 		$mountManager->removeMount($this->mountPoint);
@@ -247,10 +220,17 @@ class SharedMount extends MountPoint implements MoveableMount {
 	}
 
 	/**
-	 * @return \OCP\Share\IShare
+	 * @return IShare
 	 */
 	public function getShare() {
 		return $this->superShare;
+	}
+
+	/**
+	 * @return IShare[]
+	 */
+	public function getGroupedShares(): array {
+		return $this->groupedShares;
 	}
 
 	/**
@@ -275,7 +255,7 @@ class SharedMount extends MountPoint implements MoveableMount {
 				->from('filecache')
 				->where($builder->expr()->eq('fileid', $builder->createNamedParameter($this->getStorageRootId())));
 
-			$result = $query->execute();
+			$result = $query->executeQuery();
 			$row = $result->fetch();
 			$result->closeCursor();
 			if ($row) {

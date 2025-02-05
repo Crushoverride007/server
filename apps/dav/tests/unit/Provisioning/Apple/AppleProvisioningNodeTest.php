@@ -1,26 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2018 Georg Ehrke <oc.list@georgehrke.com>
- *
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\DAV\Tests\unit\Provisioning\Apple;
 
@@ -30,7 +11,6 @@ use Sabre\DAV\PropPatch;
 use Test\TestCase;
 
 class AppleProvisioningNodeTest extends TestCase {
-
 	/** @var ITimeFactory|\PHPUnit\Framework\MockObject\MockObject */
 	private $timeFactory;
 
@@ -44,32 +24,32 @@ class AppleProvisioningNodeTest extends TestCase {
 		$this->node = new AppleProvisioningNode($this->timeFactory);
 	}
 
-	public function testGetName() {
+	public function testGetName(): void {
 		$this->assertEquals('apple-provisioning.mobileconfig', $this->node->getName());
 	}
 
 
-	public function testSetName() {
+	public function testSetName(): void {
 		$this->expectException(\Sabre\DAV\Exception\Forbidden::class);
 		$this->expectExceptionMessage('Renaming apple-provisioning.mobileconfig is forbidden');
 
 		$this->node->setName('foo');
 	}
 
-	public function testGetLastModified() {
+	public function testGetLastModified(): void {
 		$this->assertEquals(null, $this->node->getLastModified());
 	}
 
 
-	public function testDelete() {
+	public function testDelete(): void {
 		$this->expectException(\Sabre\DAV\Exception\Forbidden::class);
 		$this->expectExceptionMessage('apple-provisioning.mobileconfig may not be deleted');
 
 		$this->node->delete();
 	}
 
-	public function testGetProperties() {
-		$this->timeFactory->expects($this->at(0))
+	public function testGetProperties(): void {
+		$this->timeFactory->expects($this->once())
 			->method('getDateTime')
 			->willReturn(new \DateTime('2000-01-01'));
 
@@ -80,7 +60,7 @@ class AppleProvisioningNodeTest extends TestCase {
 	}
 
 
-	public function testGetPropPatch() {
+	public function testGetPropPatch(): void {
 		$this->expectException(\Sabre\DAV\Exception\Forbidden::class);
 		$this->expectExceptionMessage('apple-provisioning.mobileconfig\'s properties may not be altered.');
 

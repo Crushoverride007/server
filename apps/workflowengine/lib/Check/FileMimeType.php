@@ -1,31 +1,11 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Joas Schilling <coding@schilljs.com>
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCA\WorkflowEngine\Check;
 
+use OC\Files\Storage\Local;
 use OCA\WorkflowEngine\Entity\File;
 use OCP\Files\IMimeTypeDetector;
 use OCP\Files\Storage\IStorage;
@@ -41,21 +21,17 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 	/** @var array */
 	protected $mimeType;
 
-	/** @var IRequest */
-	protected $request;
-
-	/** @var IMimeTypeDetector */
-	protected $mimeTypeDetector;
-
 	/**
 	 * @param IL10N $l
 	 * @param IRequest $request
 	 * @param IMimeTypeDetector $mimeTypeDetector
 	 */
-	public function __construct(IL10N $l, IRequest $request, IMimeTypeDetector $mimeTypeDetector) {
+	public function __construct(
+		IL10N $l,
+		protected IRequest $request,
+		protected IMimeTypeDetector $mimeTypeDetector,
+	) {
 		parent::__construct($l);
-		$this->request = $request;
-		$this->mimeTypeDetector = $mimeTypeDetector;
 	}
 
 	/**
@@ -76,7 +52,7 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 	}
 
 	/**
-	 * The mimetype is only cached if the file exists. Otherwise files access
+	 * The mimetype is only cached if the file has a valid mimetype. Otherwise files access
 	 * control will cache "application/octet-stream" for all the target node on:
 	 * rename, move, copy and all other methods which create a new item
 	 *
@@ -91,7 +67,7 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 	 * @return string
 	 */
 	protected function cacheAndReturnMimeType(string $storageId, ?string $path, string $mimeType): string {
-		if ($path !== null && $this->storage->file_exists($path)) {
+		if ($path !== null && $mimeType !== 'application/octet-stream') {
 			$this->mimeType[$storageId][$path] = $mimeType;
 		}
 
@@ -106,13 +82,7 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 	 * @return bool
 	 */
 	public function executeCheck($operator, $value) {
-		$actualValue = $this->getActualValue();
-		$plainMimetypeResult = $this->executeStringCheck($operator, $value, $actualValue);
-		if ($actualValue === 'httpd/unix-directory') {
-			return $plainMimetypeResult;
-		}
-		$detectMimetypeBasedOnFilenameResult = $this->executeStringCheck($operator, $value, $this->mimeTypeDetector->detectPath($this->path));
-		return $plainMimetypeResult || $detectMimetypeBasedOnFilenameResult;
+		return $this->executeStringCheck($operator, $value, $this->getActualValue());
 	}
 
 	/**
@@ -122,12 +92,15 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 		if ($this->mimeType[$this->storage->getId()][$this->path] !== null) {
 			return $this->mimeType[$this->storage->getId()][$this->path];
 		}
-
-		if ($this->storage->is_dir($this->path)) {
-			return $this->cacheAndReturnMimeType($this->storage->getId(), $this->path, 'httpd/unix-directory');
+		$cacheEntry = $this->storage->getCache()->get($this->path);
+		if ($cacheEntry && $cacheEntry->getMimeType() !== 'application/octet-stream') {
+			return $this->cacheAndReturnMimeType($this->storage->getId(), $this->path, $cacheEntry->getMimeType());
 		}
 
-		if ($this->storage->file_exists($this->path) && $this->storage->filesize($this->path)) {
+		if ($this->storage->file_exists($this->path) &&
+			$this->storage->filesize($this->path) &&
+			$this->storage->instanceOfStorage(Local::class)
+		) {
 			$path = $this->storage->getLocalFile($this->path);
 			$mimeType = $this->mimeTypeDetector->detectContent($path);
 			return $this->cacheAndReturnMimeType($this->storage->getId(), $this->path, $mimeType);
@@ -153,11 +126,11 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 	protected function isWebDAVRequest() {
 		return substr($this->request->getScriptName(), 0 - strlen('/remote.php')) === '/remote.php' && (
 			$this->request->getPathInfo() === '/webdav' ||
-			strpos($this->request->getPathInfo(), '/webdav/') === 0 ||
+			str_starts_with($this->request->getPathInfo() ?? '', '/webdav/') ||
 			$this->request->getPathInfo() === '/dav/files' ||
-			strpos($this->request->getPathInfo(), '/dav/files/') === 0 ||
+			str_starts_with($this->request->getPathInfo() ?? '', '/dav/files/') ||
 			$this->request->getPathInfo() === '/dav/uploads' ||
-			strpos($this->request->getPathInfo(), '/dav/uploads/') === 0
+			str_starts_with($this->request->getPathInfo() ?? '', '/dav/uploads/')
 		);
 	}
 
@@ -167,7 +140,7 @@ class FileMimeType extends AbstractStringCheck implements IFileCheck {
 	protected function isPublicWebDAVRequest() {
 		return substr($this->request->getScriptName(), 0 - strlen('/public.php')) === '/public.php' && (
 			$this->request->getPathInfo() === '/webdav' ||
-			strpos($this->request->getPathInfo(), '/webdav/') === 0
+			str_starts_with($this->request->getPathInfo() ?? '', '/webdav/')
 		);
 	}
 

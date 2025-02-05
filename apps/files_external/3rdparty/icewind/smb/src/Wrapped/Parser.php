@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\SMB\Wrapped;
@@ -172,14 +171,14 @@ class Parser {
 	public function parseDir(array $output, string $basePath, callable $aclCallback): array {
 		//last line is used space
 		array_pop($output);
-		$regex = '/^\s*(.*?)\s\s\s\s+(?:([NDHARS]*)\s+)?([0-9]+)\s+(.*)$/';
+		$regex = '/^\s*(.*?)\s\s\s\s+(?:([NDHARSCndharsc]*)\s+)?([0-9]+)\s+(.*)$/';
 		//2 spaces, filename, optional type, size, date
 		$content = [];
 		foreach ($output as $line) {
 			if (preg_match($regex, $line, $matches)) {
 				list(, $name, $mode, $size, $time) = $matches;
 				if ($name !== '.' and $name !== '..') {
-					$mode = $this->parseMode($mode);
+					$mode = $this->parseMode(strtoupper($mode));
 					$time = strtotime($time . ' ' . $this->timeZone);
 					$path = $basePath . '/' . $name;
 					$content[] = new FileInfo($path, $name, (int)$size, $time, $mode, function () use ($aclCallback, $path): array {

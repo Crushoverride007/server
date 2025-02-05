@@ -3,39 +3,19 @@
 declare(strict_types=1);
 
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author cetra3 <peter@parashift.com.au>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author MartB <mart.b@outlook.de>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Victor Dubiniuk <dubiniuk@owncloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Session;
 
-use OC\Authentication\Exceptions\InvalidTokenException;
 use OC\Authentication\Token\IProvider;
+use OCP\Authentication\Exceptions\InvalidTokenException;
+use OCP\ILogger;
 use OCP\Session\Exceptions\SessionNotAvailableException;
+use Psr\Log\LoggerInterface;
+use function call_user_func_array;
+use function microtime;
 
 /**
  * Class Internal
@@ -49,9 +29,13 @@ class Internal extends Session {
 	 * @param string $name
 	 * @throws \Exception
 	 */
-	public function __construct(string $name) {
+	public function __construct(
+		string $name,
+		private ?LoggerInterface $logger,
+	) {
 		set_error_handler([$this, 'trapError']);
 		$this->invoke('session_name', [$name]);
+		$this->invoke('session_cache_limiter', ['']);
 		try {
 			$this->startSession();
 		} catch (\Exception $e) {
@@ -107,6 +91,7 @@ class Internal extends Session {
 		$this->reopen();
 		$this->invoke('session_unset');
 		$this->regenerateId();
+		$this->invoke('session_write_close');
 		$this->startSession(true);
 		$_SESSION = [];
 	}
@@ -120,7 +105,7 @@ class Internal extends Session {
 	 * Wrapper around session_regenerate_id
 	 *
 	 * @param bool $deleteOldSession Whether to delete the old associated session file or not.
-	 * @param bool $updateToken Wheater to update the associated auth token
+	 * @param bool $updateToken Whether to update the associated auth token
 	 * @return void
 	 */
 	public function regenerateId(bool $deleteOldSession = true, bool $updateToken = false) {
@@ -148,7 +133,7 @@ class Internal extends Session {
 			$newId = $this->getId();
 
 			/** @var IProvider $tokenProvider */
-			$tokenProvider = \OC::$server->query(IProvider::class);
+			$tokenProvider = \OCP\Server::get(IProvider::class);
 
 			try {
 				$tokenProvider->renewSessionToken($oldId, $newId);
@@ -198,15 +183,6 @@ class Internal extends Session {
 	}
 
 	/**
-	 * @throws \Exception
-	 */
-	private function validateSession() {
-		if ($this->sessionClosed) {
-			throw new SessionNotAvailableException('Session has been closed - no further changes to the session are allowed');
-		}
-	}
-
-	/**
 	 * @param string $functionName the full session_* function name
 	 * @param array $parameters
 	 * @param bool $silence whether to suppress warnings
@@ -215,11 +191,31 @@ class Internal extends Session {
 	 */
 	private function invoke(string $functionName, array $parameters = [], bool $silence = false) {
 		try {
+			$timeBefore = microtime(true);
 			if ($silence) {
-				return @call_user_func_array($functionName, $parameters);
+				$result = @call_user_func_array($functionName, $parameters);
 			} else {
-				return call_user_func_array($functionName, $parameters);
+				$result = call_user_func_array($functionName, $parameters);
 			}
+			$timeAfter = microtime(true);
+			$timeSpent = $timeAfter - $timeBefore;
+			if ($timeSpent > 0.1) {
+				$logLevel = match (true) {
+					$timeSpent > 25 => ILogger::ERROR,
+					$timeSpent > 10 => ILogger::WARN,
+					$timeSpent > 0.5 => ILogger::INFO,
+					default => ILogger::DEBUG,
+				};
+				$this->logger?->log(
+					$logLevel,
+					"Slow session operation $functionName detected",
+					[
+						'parameters' => $parameters,
+						'timeSpent' => $timeSpent,
+					],
+				);
+			}
+			return $result;
 		} catch (\Error $e) {
 			$this->trapError($e->getCode(), $e->getMessage());
 		}

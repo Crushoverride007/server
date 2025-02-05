@@ -1,32 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Mount;
 
@@ -44,6 +21,7 @@ class MountPoint implements IMountPoint {
 	protected $storage = null;
 	protected $class;
 	protected $storageId;
+	protected $numericStorageId = null;
 	protected $rootId = null;
 
 	/**
@@ -93,11 +71,11 @@ class MountPoint implements IMountPoint {
 	public function __construct(
 		$storage,
 		string $mountpoint,
-		array $arguments = null,
-		IStorageFactory $loader = null,
-		array $mountOptions = null,
-		int $mountId = null,
-		string $mountProvider = null
+		?array $arguments = null,
+		?IStorageFactory $loader = null,
+		?array $mountOptions = null,
+		?int $mountId = null,
+		?string $mountProvider = null,
 	) {
 		if (is_null($arguments)) {
 			$arguments = [];
@@ -120,7 +98,7 @@ class MountPoint implements IMountPoint {
 			$this->storage = $this->loader->wrap($this, $storage);
 		} else {
 			// Update old classes to new namespace
-			if (strpos($storage, 'OC_Filestorage_') !== false) {
+			if (str_contains($storage, 'OC_Filestorage_')) {
 				$storage = '\OC\Files\Storage\\' . substr($storage, 15);
 			}
 			$this->class = $storage;
@@ -195,19 +173,15 @@ class MountPoint implements IMountPoint {
 	}
 
 	/**
-	 * @return string
+	 * @return string|null
 	 */
 	public function getStorageId() {
 		if (!$this->storageId) {
-			if (is_null($this->storage)) {
-				$storage = $this->createStorage(); //FIXME: start using exceptions
-				if (is_null($storage)) {
-					return null;
-				}
-
-				$this->storage = $storage;
+			$storage = $this->getStorage();
+			if (is_null($storage)) {
+				return null;
 			}
-			$this->storageId = $this->storage->getId();
+			$this->storageId = $storage->getId();
 			if (strlen($this->storageId) > 64) {
 				$this->storageId = md5($this->storageId);
 			}
@@ -219,7 +193,14 @@ class MountPoint implements IMountPoint {
 	 * @return int
 	 */
 	public function getNumericStorageId() {
-		return $this->getStorage()->getStorageCache()->getNumericId();
+		if (is_null($this->numericStorageId)) {
+			$storage = $this->getStorage();
+			if (is_null($storage)) {
+				return -1;
+			}
+			$this->numericStorageId = $storage->getCache()->getNumericStorageId();
+		}
+		return $this->numericStorageId;
 	}
 
 	/**
@@ -268,7 +249,7 @@ class MountPoint implements IMountPoint {
 	 * @return mixed
 	 */
 	public function getOption($name, $default) {
-		return isset($this->mountOptions[$name]) ? $this->mountOptions[$name] : $default;
+		return $this->mountOptions[$name] ?? $default;
 	}
 
 	/**

@@ -1,59 +1,29 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Clark Tomlinson <fallen013@gmail.com>
- * @author Jan-Christoph Borchardt <hey@jancborchardt.net>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Valdnet <47037905+Valdnet@users.noreply.github.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Encryption\Crypto;
 
 use OC\Encryption\Exceptions\DecryptionFailedException;
 use OC\Files\Cache\Scanner;
 use OC\Files\View;
+use OCA\Encryption\Exceptions\MultiKeyEncryptException;
 use OCA\Encryption\Exceptions\PublicKeyMissingException;
 use OCA\Encryption\KeyManager;
 use OCA\Encryption\Session;
 use OCA\Encryption\Util;
 use OCP\Encryption\IEncryptionModule;
 use OCP\IL10N;
-use OCP\ILogger;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class Encryption implements IEncryptionModule {
 	public const ID = 'OC_DEFAULT_MODULE';
 	public const DISPLAY_NAME = 'Default encryption module';
-
-	/**
-	 * @var Crypt
-	 */
-	private $crypt;
 
 	/** @var string */
 	private $cipher;
@@ -64,8 +34,7 @@ class Encryption implements IEncryptionModule {
 	/** @var string */
 	private $user;
 
-	/** @var  array */
-	private $owner;
+	private array $owner;
 
 	/** @var string */
 	private $fileKey;
@@ -73,74 +42,34 @@ class Encryption implements IEncryptionModule {
 	/** @var string */
 	private $writeCache;
 
-	/** @var KeyManager */
-	private $keyManager;
-
 	/** @var array */
 	private $accessList;
 
 	/** @var boolean */
 	private $isWriteOperation;
 
-	/** @var Util */
-	private $util;
-
-	/** @var  Session */
-	private $session;
-
-	/** @var  ILogger */
-	private $logger;
-
-	/** @var IL10N */
-	private $l;
-
-	/** @var EncryptAll */
-	private $encryptAll;
-
-	/** @var  bool */
-	private $useMasterPassword;
-
-	/** @var DecryptAll  */
-	private $decryptAll;
+	private bool $useMasterPassword;
 
 	private bool $useLegacyBase64Encoding = false;
 
 	/** @var int Current version of the file */
-	private $version = 0;
+	private int $version = 0;
 
 	/** @var array remember encryption signature version */
 	private static $rememberVersion = [];
 
-
-	/**
-	 *
-	 * @param Crypt $crypt
-	 * @param KeyManager $keyManager
-	 * @param Util $util
-	 * @param Session $session
-	 * @param EncryptAll $encryptAll
-	 * @param DecryptAll $decryptAll
-	 * @param ILogger $logger
-	 * @param IL10N $il10n
-	 */
-	public function __construct(Crypt $crypt,
-								KeyManager $keyManager,
-								Util $util,
-								Session $session,
-								EncryptAll $encryptAll,
-								DecryptAll $decryptAll,
-								ILogger $logger,
-								IL10N $il10n) {
-		$this->crypt = $crypt;
-		$this->keyManager = $keyManager;
-		$this->util = $util;
-		$this->session = $session;
-		$this->encryptAll = $encryptAll;
-		$this->decryptAll = $decryptAll;
-		$this->logger = $logger;
-		$this->l = $il10n;
+	public function __construct(
+		private Crypt $crypt,
+		private KeyManager $keyManager,
+		private Util $util,
+		private Session $session,
+		private EncryptAll $encryptAll,
+		private DecryptAll $decryptAll,
+		private LoggerInterface $logger,
+		private IL10N $l,
+	) {
 		$this->owner = [];
-		$this->useMasterPassword = $util->isMasterKeyEnabled();
+		$this->useMasterPassword = $this->util->isMasterKeyEnabled();
 	}
 
 	/**
@@ -171,8 +100,8 @@ class Encryption implements IEncryptionModule {
 	 * @param array $accessList who has access to the file contains the key 'users' and 'public'
 	 *
 	 * @return array $header contain data as key-value pairs which should be
-	 *                       written to the header, in case of a write operation
-	 *                       or if no additional data is needed return a empty array
+	 *               written to the header, in case of a write operation
+	 *               or if no additional data is needed return a empty array
 	 */
 	public function begin($path, $user, $mode, array $header, array $accessList) {
 		$this->path = $this->getPathToRealFile($path);
@@ -181,6 +110,7 @@ class Encryption implements IEncryptionModule {
 		$this->isWriteOperation = false;
 		$this->writeCache = '';
 		$this->useLegacyBase64Encoding = true;
+
 
 		if (isset($header['encoding'])) {
 			$this->useLegacyBase64Encoding = $header['encoding'] !== Crypt::BINARY_ENCODING_FORMAT;
@@ -194,15 +124,10 @@ class Encryption implements IEncryptionModule {
 			}
 		}
 
-		if ($this->session->decryptAllModeActivated()) {
-			$encryptedFileKey = $this->keyManager->getEncryptedFileKey($this->path);
-			$shareKey = $this->keyManager->getShareKey($this->path, $this->session->getDecryptAllUid());
-			$this->fileKey = $this->crypt->multiKeyDecrypt($encryptedFileKey,
-				$shareKey,
-				$this->session->getDecryptAllKey());
-		} else {
-			$this->fileKey = $this->keyManager->getFileKey($this->path, $this->user);
-		}
+		/* If useLegacyFileKey is not specified in header, auto-detect, to be safe */
+		$useLegacyFileKey = (($header['useLegacyFileKey'] ?? '') == 'false' ? false : null);
+
+		$this->fileKey = $this->keyManager->getFileKey($this->path, $this->user, $useLegacyFileKey, $this->session->decryptAllModeActivated());
 
 		// always use the version from the original file, also part files
 		// need to have a correct version number if they get moved over to the
@@ -239,7 +164,11 @@ class Encryption implements IEncryptionModule {
 			$this->cipher = $this->crypt->getLegacyCipher();
 		}
 
-		$result = ['cipher' => $this->cipher, 'signed' => 'true'];
+		$result = [
+			'cipher' => $this->cipher,
+			'signed' => 'true',
+			'useLegacyFileKey' => 'false',
+		];
 
 		if ($this->useLegacyBase64Encoding !== true) {
 			$result['encoding'] = Crypt::BINARY_ENCODING_FORMAT;
@@ -254,14 +183,14 @@ class Encryption implements IEncryptionModule {
 	 * buffer.
 	 *
 	 * @param string $path to the file
-	 * @param int $position
+	 * @param string $position
 	 * @return string remained data which should be written to the file in case
 	 *                of a write operation
 	 * @throws PublicKeyMissingException
 	 * @throws \Exception
-	 * @throws \OCA\Encryption\Exceptions\MultiKeyEncryptException
+	 * @throws MultiKeyEncryptException
 	 */
-	public function end($path, $position = 0) {
+	public function end($path, $position = '0') {
 		$result = '';
 		if ($this->isWriteOperation) {
 			// in case of a part file we remember the new signature versions
@@ -296,10 +225,18 @@ class Encryption implements IEncryptionModule {
 			}
 
 			$publicKeys = $this->keyManager->addSystemKeys($this->accessList, $publicKeys, $this->getOwner($path));
-			$encryptedKeyfiles = $this->crypt->multiKeyEncrypt($this->fileKey, $publicKeys);
-			$this->keyManager->setAllFileKeys($this->path, $encryptedKeyfiles);
+			$shareKeys = $this->crypt->multiKeyEncrypt($this->fileKey, $publicKeys);
+			if (!$this->keyManager->deleteLegacyFileKey($this->path)) {
+				$this->logger->warning(
+					'Failed to delete legacy filekey for {path}',
+					['app' => 'encryption', 'path' => $path]
+				);
+			}
+			foreach ($shareKeys as $uid => $keyFile) {
+				$this->keyManager->setShareKey($this->path, $uid, $keyFile);
+			}
 		}
-		return $result;
+		return $result ?: '';
 	}
 
 
@@ -315,7 +252,6 @@ class Encryption implements IEncryptionModule {
 		// If extra data is left over from the last round, make sure it
 		// is integrated into the next block
 		if ($this->writeCache) {
-
 			// Concat writeCache to start of $data
 			$data = $this->writeCache . $data;
 
@@ -327,7 +263,6 @@ class Encryption implements IEncryptionModule {
 		$encrypted = '';
 		// While there still remains some data to be processed & written
 		while (strlen($data) > 0) {
-
 			// Remaining length for this iteration, not of the
 			// entire file (may be greater than 8192 bytes)
 			$remainingLength = strlen($data);
@@ -335,7 +270,6 @@ class Encryption implements IEncryptionModule {
 			// If data remaining to be written is less than the
 			// size of 1 unencrypted block
 			if ($remainingLength < $this->getUnencryptedBlockSize(true)) {
-
 				// Set writeCache to contents of $data
 				// The writeCache will be carried over to the
 				// next write round, and added to the start of
@@ -349,11 +283,10 @@ class Encryption implements IEncryptionModule {
 				// Clear $data ready for next round
 				$data = '';
 			} else {
-
 				// Read the chunk from the start of $data
 				$chunk = substr($data, 0, $this->getUnencryptedBlockSize(true));
 
-				$encrypted .= $this->crypt->symmetricEncryptFileContent($chunk, $this->fileKey, $this->version + 1, $position);
+				$encrypted .= $this->crypt->symmetricEncryptFileContent($chunk, $this->fileKey, $this->version + 1, (string)$position);
 
 				// Remove the chunk we just processed from
 				// $data, leaving only unprocessed data in $data
@@ -391,7 +324,7 @@ class Encryption implements IEncryptionModule {
 	 * @param string $path path to the file which should be updated
 	 * @param string $uid of the user who performs the operation
 	 * @param array $accessList who has access to the file contains the key 'users' and 'public'
-	 * @return boolean
+	 * @return bool
 	 */
 	public function update($path, $uid, array $accessList) {
 		if (empty($accessList)) {
@@ -399,10 +332,10 @@ class Encryption implements IEncryptionModule {
 				$this->keyManager->setVersion($path, self::$rememberVersion[$path], new View());
 				unset(self::$rememberVersion[$path]);
 			}
-			return;
+			return false;
 		}
 
-		$fileKey = $this->keyManager->getFileKey($path, $uid);
+		$fileKey = $this->keyManager->getFileKey($path, $uid, null);
 
 		if (!empty($fileKey)) {
 			$publicKeys = [];
@@ -420,11 +353,13 @@ class Encryption implements IEncryptionModule {
 
 			$publicKeys = $this->keyManager->addSystemKeys($accessList, $publicKeys, $this->getOwner($path));
 
-			$encryptedFileKey = $this->crypt->multiKeyEncrypt($fileKey, $publicKeys);
+			$shareKeys = $this->crypt->multiKeyEncrypt($fileKey, $publicKeys);
 
 			$this->keyManager->deleteAllFileKeys($path);
 
-			$this->keyManager->setAllFileKeys($path, $encryptedFileKey);
+			foreach ($shareKeys as $uid => $keyFile) {
+				$this->keyManager->setShareKey($path, $uid, $keyFile);
+			}
 		} else {
 			$this->logger->debug('no file key found, we assume that the file "{file}" is not encrypted',
 				['file' => $path, 'app' => 'encryption']);
@@ -498,12 +433,12 @@ class Encryption implements IEncryptionModule {
 	 * e.g. if all encryption keys exists
 	 *
 	 * @param string $path
-	 * @param string $uid user for whom we want to check if he can read the file
+	 * @param string $uid user for whom we want to check if they can read the file
 	 * @return bool
 	 * @throws DecryptionFailedException
 	 */
 	public function isReadable($path, $uid) {
-		$fileKey = $this->keyManager->getFileKey($path, $uid);
+		$fileKey = $this->keyManager->getFileKey($path, $uid, null);
 		if (empty($fileKey)) {
 			$owner = $this->util->getOwner($path);
 			if ($owner !== $uid) {

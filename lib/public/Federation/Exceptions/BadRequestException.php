@@ -1,25 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2018 Bjoern Schiessle <bjoern@schiessle.org>
- *
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OCP\Federation\Exceptions;
 
@@ -32,6 +14,9 @@ use OCP\HintException;
  * @since 14.0.0
  */
 class BadRequestException extends HintException {
+	/**
+	 * @var string[] $parameterList
+	 */
 	private $parameterList;
 
 	/**
@@ -42,7 +27,7 @@ class BadRequestException extends HintException {
 	 * @param array $missingParameters
 	 */
 	public function __construct(array $missingParameters) {
-		$l = \OC::$server->getL10N('federation');
+		$l = \OCP\Util::getL10N('federation');
 		$this->parameterList = $missingParameters;
 		$parameterList = implode(',', $missingParameters);
 		$message = 'Parameters missing in order to complete the request. Missing Parameters: ' . $parameterList;
@@ -55,7 +40,7 @@ class BadRequestException extends HintException {
 	 *
 	 * @since 14.0.0
 	 *
-	 * @return array
+	 * @return array{message: string, validationErrors: array{message: string, name: string}[]}
 	 */
 	public function getReturnMessage() {
 		$result = [
@@ -65,7 +50,7 @@ class BadRequestException extends HintException {
 		];
 
 		foreach ($this->parameterList as $missingParameter) {
-			$result['validationErrors'] = [
+			$result['validationErrors'][] = [
 				'name' => $missingParameter,
 				'message' => 'NOT_FOUND'
 			];

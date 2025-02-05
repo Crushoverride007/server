@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\SMB\Wrapped;
@@ -75,7 +74,8 @@ class RawConnection {
 			'CLI_NO_READLINE'       => 1,   // Not all distros build smbclient with readline, disable it to get consistent behaviour
 			'LC_ALL'                => Server::LOCALE,
 			'LANG'                  => Server::LOCALE,
-			'COLUMNS'               => 8192 // prevent smbclient from line-wrapping it's output
+			'COLUMNS'               => 8192, // prevent smbclient from line-wrapping it's output
+			'TZ'                    => 'UTC',
 		]);
 		$this->process = proc_open($this->command, $descriptorSpec, $this->pipes, '/', $env);
 		if (!$this->isValid()) {
@@ -213,6 +213,7 @@ class RawConnection {
 
 		$this->authStream = fopen('php://temp', 'w+');
 		fwrite($this->authStream, $auth);
+		rewind($this->authStream);
 	}
 
 	/**

@@ -1,30 +1,11 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Robin Appelman <robin@icewind.nl>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Tobias Kaminsky <tobias@kaminsky.me>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\Files\Cache;
 
+use OC\Files\Cache\Wrapper\CacheJail;
 use OC\Files\Search\QueryOptimizer\QueryOptimizer;
 use OC\Files\Search\SearchBinaryOperator;
 use OC\SystemConfig;
@@ -32,47 +13,112 @@ use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\Files\Cache\ICache;
 use OCP\Files\Cache\ICacheEntry;
 use OCP\Files\IMimeTypeLoader;
+use OCP\Files\IRootFolder;
+use OCP\Files\Mount\IMountPoint;
 use OCP\Files\Search\ISearchBinaryOperator;
 use OCP\Files\Search\ISearchQuery;
+use OCP\FilesMetadata\IFilesMetadataManager;
+use OCP\FilesMetadata\IMetadataQuery;
 use OCP\IDBConnection;
+use OCP\IGroupManager;
+use OCP\IUser;
 use Psr\Log\LoggerInterface;
 
 class QuerySearchHelper {
-
-	/** @var IMimeTypeLoader */
-	private $mimetypeLoader;
-	/** @var IDBConnection */
-	private $connection;
-	/** @var SystemConfig */
-	private $systemConfig;
-	private LoggerInterface $logger;
-	/** @var SearchBuilder */
-	private $searchBuilder;
-	/** @var QueryOptimizer */
-	private $queryOptimizer;
-
 	public function __construct(
-		IMimeTypeLoader $mimetypeLoader,
-		IDBConnection $connection,
-		SystemConfig $systemConfig,
-		LoggerInterface $logger,
-		SearchBuilder $searchBuilder,
-		QueryOptimizer $queryOptimizer
+		private IMimeTypeLoader $mimetypeLoader,
+		private IDBConnection $connection,
+		private SystemConfig $systemConfig,
+		private LoggerInterface $logger,
+		private SearchBuilder $searchBuilder,
+		private QueryOptimizer $queryOptimizer,
+		private IGroupManager $groupManager,
+		private IFilesMetadataManager $filesMetadataManager,
 	) {
-		$this->mimetypeLoader = $mimetypeLoader;
-		$this->connection = $connection;
-		$this->systemConfig = $systemConfig;
-		$this->logger = $logger;
-		$this->searchBuilder = $searchBuilder;
-		$this->queryOptimizer = $queryOptimizer;
 	}
 
 	protected function getQueryBuilder() {
 		return new CacheQueryBuilder(
-			$this->connection,
-			$this->systemConfig,
-			$this->logger
+			$this->connection->getQueryBuilder(),
+			$this->filesMetadataManager,
 		);
+	}
+
+	/**
+	 * @param CacheQueryBuilder $query
+	 * @param ISearchQuery $searchQuery
+	 * @param array $caches
+	 * @param IMetadataQuery|null $metadataQuery
+	 */
+	protected function applySearchConstraints(
+		CacheQueryBuilder $query,
+		ISearchQuery $searchQuery,
+		array $caches,
+		?IMetadataQuery $metadataQuery = null,
+	): void {
+		$storageFilters = array_values(array_map(function (ICache $cache) {
+			return $cache->getQueryFilterForStorage();
+		}, $caches));
+		$storageFilter = new SearchBinaryOperator(ISearchBinaryOperator::OPERATOR_OR, $storageFilters);
+		$filter = new SearchBinaryOperator(ISearchBinaryOperator::OPERATOR_AND, [$searchQuery->getSearchOperation(), $storageFilter]);
+		$this->queryOptimizer->processOperator($filter);
+
+		$searchExpr = $this->searchBuilder->searchOperatorToDBExpr($query, $filter, $metadataQuery);
+		if ($searchExpr) {
+			$query->andWhere($searchExpr);
+		}
+
+		$this->searchBuilder->addSearchOrdersToQuery($query, $searchQuery->getOrder(), $metadataQuery);
+
+		if ($searchQuery->getLimit()) {
+			$query->setMaxResults($searchQuery->getLimit());
+		}
+		if ($searchQuery->getOffset()) {
+			$query->setFirstResult($searchQuery->getOffset());
+		}
+	}
+
+
+	/**
+	 * @return array<array-key, array{id: int, name: string, visibility: int, editable: int, ref_file_id: int, number_files: int}>
+	 */
+	public function findUsedTagsInCaches(ISearchQuery $searchQuery, array $caches): array {
+		$query = $this->getQueryBuilder();
+		$query->selectTagUsage();
+
+		$this->applySearchConstraints($query, $searchQuery, $caches);
+
+		$result = $query->executeQuery();
+		$tags = $result->fetchAll();
+		$result->closeCursor();
+		return $tags;
+	}
+
+	protected function equipQueryForSystemTags(CacheQueryBuilder $query, IUser $user): void {
+		$query->leftJoin('file', 'systemtag_object_mapping', 'systemtagmap', $query->expr()->andX(
+			$query->expr()->eq('file.fileid', $query->expr()->castColumn('systemtagmap.objectid', IQueryBuilder::PARAM_INT)),
+			$query->expr()->eq('systemtagmap.objecttype', $query->createNamedParameter('files'))
+		));
+		$on = $query->expr()->andX($query->expr()->eq('systemtag.id', 'systemtagmap.systemtagid'));
+		if (!$this->groupManager->isAdmin($user->getUID())) {
+			$on->add($query->expr()->eq('systemtag.visibility', $query->createNamedParameter(true)));
+		}
+		$query->leftJoin('systemtagmap', 'systemtag', 'systemtag', $on);
+	}
+
+	protected function equipQueryForDavTags(CacheQueryBuilder $query, IUser $user): void {
+		$query
+			->leftJoin('file', 'vcategory_to_object', 'tagmap', $query->expr()->eq('file.fileid', 'tagmap.objid'))
+			->leftJoin('tagmap', 'vcategory', 'tag', $query->expr()->andX(
+				$query->expr()->eq('tagmap.categoryid', 'tag.id'),
+				$query->expr()->eq('tag.type', $query->createNamedParameter('files')),
+				$query->expr()->eq('tag.uid', $query->createNamedParameter($user->getUID()))
+			));
+	}
+
+
+	protected function equipQueryForShares(CacheQueryBuilder $query): void {
+		$query->join('file', 'share', 's', $query->expr()->eq('file.fileid', 's.file_source'));
 	}
 
 	/**
@@ -105,61 +151,34 @@ class QuerySearchHelper {
 
 		$query = $builder->selectFileCache('file', false);
 
-		if ($this->searchBuilder->shouldJoinTags($searchQuery->getSearchOperation())) {
-			$user = $searchQuery->getUser();
-			if ($user === null) {
-				throw new \InvalidArgumentException("Searching by tag requires the user to be set in the query");
-			}
-			$query
-				->leftJoin('file', 'vcategory_to_object', 'tagmap', $builder->expr()->eq('file.fileid', 'tagmap.objid'))
-				->leftJoin('tagmap', 'vcategory', 'tag', $builder->expr()->andX(
-					$builder->expr()->eq('tagmap.type', 'tag.type'),
-					$builder->expr()->eq('tagmap.categoryid', 'tag.id'),
-					$builder->expr()->eq('tag.type', $builder->createNamedParameter('files')),
-					$builder->expr()->eq('tag.uid', $builder->createNamedParameter($user->getUID()))
-				))
-				->leftJoin('file', 'systemtag_object_mapping', 'systemtagmap', $builder->expr()->andX(
-					$builder->expr()->eq('file.fileid', $builder->expr()->castColumn('systemtagmap.objectid', IQueryBuilder::PARAM_INT)),
-					$builder->expr()->eq('systemtagmap.objecttype', $builder->createNamedParameter('files'))
-				))
-				->leftJoin('systemtagmap', 'systemtag', 'systemtag', $builder->expr()->andX(
-					$builder->expr()->eq('systemtag.id', 'systemtagmap.systemtagid'),
-					$builder->expr()->eq('systemtag.visibility', $builder->createNamedParameter(true))
-				));
+		$requestedFields = $this->searchBuilder->extractRequestedFields($searchQuery->getSearchOperation());
+
+		if (in_array('systemtag', $requestedFields)) {
+			$this->equipQueryForSystemTags($query, $this->requireUser($searchQuery));
+		}
+		if (in_array('tagname', $requestedFields) || in_array('favorite', $requestedFields)) {
+			$this->equipQueryForDavTags($query, $this->requireUser($searchQuery));
+		}
+		if (in_array('owner', $requestedFields) || in_array('share_with', $requestedFields) || in_array('share_type', $requestedFields)) {
+			$this->equipQueryForShares($query);
 		}
 
-		$storageFilters = array_values(array_map(function (ICache $cache) {
-			return $cache->getQueryFilterForStorage();
-		}, $caches));
-		$storageFilter = new SearchBinaryOperator(ISearchBinaryOperator::OPERATOR_OR, $storageFilters);
-		$filter = new SearchBinaryOperator(ISearchBinaryOperator::OPERATOR_AND, [$searchQuery->getSearchOperation(), $storageFilter]);
-		$this->queryOptimizer->processOperator($filter);
+		$metadataQuery = $query->selectMetadata();
 
-		$searchExpr = $this->searchBuilder->searchOperatorToDBExpr($builder, $filter);
-		if ($searchExpr) {
-			$query->andWhere($searchExpr);
-		}
+		$this->applySearchConstraints($query, $searchQuery, $caches, $metadataQuery);
 
-		$this->searchBuilder->addSearchOrdersToQuery($query, $searchQuery->getOrder());
-
-		if ($searchQuery->getLimit()) {
-			$query->setMaxResults($searchQuery->getLimit());
-		}
-		if ($searchQuery->getOffset()) {
-			$query->setFirstResult($searchQuery->getOffset());
-		}
-
-		$result = $query->execute();
+		$result = $query->executeQuery();
 		$files = $result->fetchAll();
 
-		$rawEntries = array_map(function (array $data) {
+		$rawEntries = array_map(function (array $data) use ($metadataQuery) {
+			$data['metadata'] = $metadataQuery->extractMetadata($data)->asArray();
 			return Cache::cacheEntryFromData($data, $this->mimetypeLoader);
 		}, $files);
 
 		$result->closeCursor();
 
 		// loop through all caches for each result to see if the result matches that storage
-		// results are grouped by the same array keys as the caches argument to allow the caller to distringuish the source of the results
+		// results are grouped by the same array keys as the caches argument to allow the caller to distinguish the source of the results
 		$results = array_fill_keys(array_keys($caches), []);
 		foreach ($rawEntries as $rawEntry) {
 			foreach ($caches as $cacheKey => $cache) {
@@ -170,5 +189,51 @@ class QuerySearchHelper {
 			}
 		}
 		return $results;
+	}
+
+	protected function requireUser(ISearchQuery $searchQuery): IUser {
+		$user = $searchQuery->getUser();
+		if ($user === null) {
+			throw new \InvalidArgumentException('This search operation requires the user to be set in the query');
+		}
+		return $user;
+	}
+
+	/**
+	 * @return list{0?: array<array-key, ICache>, 1?: array<array-key, IMountPoint>}
+	 */
+	public function getCachesAndMountPointsForSearch(IRootFolder $root, string $path, bool $limitToHome = false): array {
+		$rootLength = strlen($path);
+		$mount = $root->getMount($path);
+		$storage = $mount->getStorage();
+		if ($storage === null) {
+			return [];
+		}
+		$internalPath = $mount->getInternalPath($path);
+
+		if ($internalPath !== '') {
+			// a temporary CacheJail is used to handle filtering down the results to within this folder
+			/** @var ICache[] $caches */
+			$caches = ['' => new CacheJail($storage->getCache(''), $internalPath)];
+		} else {
+			/** @var ICache[] $caches */
+			$caches = ['' => $storage->getCache('')];
+		}
+		/** @var IMountPoint[] $mountByMountPoint */
+		$mountByMountPoint = ['' => $mount];
+
+		if (!$limitToHome) {
+			$mounts = $root->getMountsIn($path);
+			foreach ($mounts as $mount) {
+				$storage = $mount->getStorage();
+				if ($storage) {
+					$relativeMountPoint = ltrim(substr($mount->getMountPoint(), $rootLength), '/');
+					$caches[$relativeMountPoint] = $storage->getCache('');
+					$mountByMountPoint[$relativeMountPoint] = $mount;
+				}
+			}
+		}
+
+		return [$caches, $mountByMountPoint];
 	}
 }

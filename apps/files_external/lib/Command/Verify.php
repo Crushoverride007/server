@@ -1,36 +1,18 @@
 <?php
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2019-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Files_External\Command;
 
 use OC\Core\Command\Base;
-use OCA\Files_External\Lib\Auth\AuthMechanism;
-use OCA\Files_External\Lib\Backend\Backend;
 use OCA\Files_External\Lib\InsufficientDataForMeaningfulAnswerException;
 use OCA\Files_External\Lib\StorageConfig;
+use OCA\Files_External\MountConfig;
 use OCA\Files_External\NotFoundException;
 use OCA\Files_External\Service\GlobalStoragesService;
+use OCP\AppFramework\Http;
 use OCP\Files\StorageNotAvailableException;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -38,11 +20,10 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class Verify extends Base {
-	protected GlobalStoragesService $globalService;
-
-	public function __construct(GlobalStoragesService $globalService) {
+	public function __construct(
+		protected GlobalStoragesService $globalService,
+	) {
 		parent::__construct();
-		$this->globalService = $globalService;
 	}
 
 	protected function configure(): void {
@@ -70,7 +51,7 @@ class Verify extends Base {
 			$mount = $this->globalService->getStorage($mountId);
 		} catch (NotFoundException $e) {
 			$output->writeln('<error>Mount with id "' . $mountId . ' not found, check "occ files_external:list" to get available mounts"</error>');
-			return 404;
+			return Http::STATUS_NOT_FOUND;
 		}
 
 		$this->updateStorageStatus($mount, $configInput, $output);
@@ -80,19 +61,17 @@ class Verify extends Base {
 			'code' => $mount->getStatus(),
 			'message' => $mount->getStatusMessage()
 		]);
-		return 0;
+		return self::SUCCESS;
 	}
 
-	private function manipulateStorageConfig(StorageConfig $storage) {
-		/** @var AuthMechanism */
+	private function manipulateStorageConfig(StorageConfig $storage): void {
 		$authMechanism = $storage->getAuthMechanism();
 		$authMechanism->manipulateStorageConfig($storage);
-		/** @var Backend */
 		$backend = $storage->getBackend();
 		$backend->manipulateStorageConfig($storage);
 	}
 
-	private function updateStorageStatus(StorageConfig &$storage, $configInput, OutputInterface $output) {
+	private function updateStorageStatus(StorageConfig &$storage, $configInput, OutputInterface $output): void {
 		try {
 			try {
 				$this->manipulateStorageConfig($storage);
@@ -111,18 +90,17 @@ class Verify extends Base {
 				$storage->setBackendOption($key, $value);
 			}
 
-			/** @var Backend */
 			$backend = $storage->getBackend();
 			// update status (can be time-consuming)
 			$storage->setStatus(
-				\OCA\Files_External\MountConfig::getBackendStatus(
+				MountConfig::getBackendStatus(
 					$backend->getStorageClass(),
 					$storage->getBackendOptions(),
 					false
 				)
 			);
 		} catch (InsufficientDataForMeaningfulAnswerException $e) {
-			$status = $e->getCode() ? $e->getCode() : StorageNotAvailableException::STATUS_INDETERMINATE;
+			$status = $e->getCode() ?: StorageNotAvailableException::STATUS_INDETERMINATE;
 			$storage->setStatus(
 				$status,
 				$e->getMessage()

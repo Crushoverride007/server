@@ -1,31 +1,15 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Config;
 
 use OC\Hooks\Emitter;
 use OC\Hooks\EmitterTrait;
+use OCP\Diagnostics\IEventLogger;
 use OCP\Files\Config\IHomeMountProvider;
 use OCP\Files\Config\IMountProvider;
 use OCP\Files\Config\IMountProviderCollection;
@@ -65,13 +49,29 @@ class MountProviderCollection implements IMountProviderCollection, Emitter {
 	/** @var callable[] */
 	private $mountFilters = [];
 
+	private IEventLogger $eventLogger;
+
 	/**
 	 * @param \OCP\Files\Storage\IStorageFactory $loader
 	 * @param IUserMountCache $mountCache
 	 */
-	public function __construct(IStorageFactory $loader, IUserMountCache $mountCache) {
+	public function __construct(
+		IStorageFactory $loader,
+		IUserMountCache $mountCache,
+		IEventLogger $eventLogger,
+	) {
 		$this->loader = $loader;
 		$this->mountCache = $mountCache;
+		$this->eventLogger = $eventLogger;
+	}
+
+	private function getMountsFromProvider(IMountProvider $provider, IUser $user, IStorageFactory $loader): array {
+		$class = str_replace('\\', '_', get_class($provider));
+		$uid = $user->getUID();
+		$this->eventLogger->start('fs:setup:provider:' . $class, "Getting mounts from $class for $uid");
+		$mounts = $provider->getMountsForUser($user, $loader) ?? [];
+		$this->eventLogger->end('fs:setup:provider:' . $class);
+		return $mounts;
 	}
 
 	/**
@@ -82,11 +82,8 @@ class MountProviderCollection implements IMountProviderCollection, Emitter {
 	private function getUserMountsForProviders(IUser $user, array $providers): array {
 		$loader = $this->loader;
 		$mounts = array_map(function (IMountProvider $provider) use ($user, $loader) {
-			return $provider->getMountsForUser($user, $loader);
+			return $this->getMountsFromProvider($provider, $user, $loader);
 		}, $providers);
-		$mounts = array_filter($mounts, function ($result) {
-			return is_array($result);
-		});
 		$mounts = array_reduce($mounts, function (array $mounts, array $providerMounts) {
 			return array_merge($mounts, $providerMounts);
 		}, []);
@@ -105,7 +102,7 @@ class MountProviderCollection implements IMountProviderCollection, Emitter {
 		return $this->getUserMountsForProviders($user, $providers);
 	}
 
-	public function addMountForUser(IUser $user, IMountManager $mountManager, callable $providerFilter = null) {
+	public function addMountForUser(IUser $user, IMountManager $mountManager, ?callable $providerFilter = null) {
 		// shared mount provider gets to go last since it needs to know existing files
 		// to check for name collisions
 		$firstMounts = [];
@@ -121,24 +118,22 @@ class MountProviderCollection implements IMountProviderCollection, Emitter {
 			return (get_class($provider) === 'OCA\Files_Sharing\MountProvider');
 		});
 		foreach ($firstProviders as $provider) {
-			$mounts = $provider->getMountsForUser($user, $this->loader);
-			if (is_array($mounts)) {
-				$firstMounts = array_merge($firstMounts, $mounts);
-			}
+			$mounts = $this->getMountsFromProvider($provider, $user, $this->loader);
+			$firstMounts = array_merge($firstMounts, $mounts);
 		}
 		$firstMounts = $this->filterMounts($user, $firstMounts);
 		array_walk($firstMounts, [$mountManager, 'addMount']);
 
 		$lateMounts = [];
 		foreach ($lastProviders as $provider) {
-			$mounts = $provider->getMountsForUser($user, $this->loader);
-			if (is_array($mounts)) {
-				$lateMounts = array_merge($lateMounts, $mounts);
-			}
+			$mounts = $this->getMountsFromProvider($provider, $user, $this->loader);
+			$lateMounts = array_merge($lateMounts, $mounts);
 		}
 
 		$lateMounts = $this->filterMounts($user, $lateMounts);
+		$this->eventLogger->start('fs:setup:add-mounts', 'Add mounts to the filesystem');
 		array_walk($lateMounts, [$mountManager, 'addMount']);
+		$this->eventLogger->end('fs:setup:add-mounts');
 
 		return array_merge($lateMounts, $firstMounts);
 	}
@@ -226,6 +221,11 @@ class MountProviderCollection implements IMountProviderCollection, Emitter {
 		$mounts = array_reduce($mounts, function (array $mounts, array $providerMounts) {
 			return array_merge($mounts, $providerMounts);
 		}, []);
+
+		if (count($mounts) === 0) {
+			throw new \Exception('No root mounts provided by any provider');
+		}
+
 		return $mounts;
 	}
 

@@ -3,7 +3,8 @@ OC.L10N.register(
     {
     "Dashboard" : "Painel",
     "Dashboard app" : "Aplicativo Painel",
-    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an\noverview of your upcoming appointments, urgent emails, chat messages,\nincoming tickets, latest tweets and much more! Users can add the widgets\nthey like and change the background to their liking." : "Comece o seu dia informado\n\nO Painel Nextcloud é o seu ponto de partida do dia, dando-lhe uma\nvisão geral de seus compromissos futuros, e-mails urgentes, mensagens de bate-papo,\ningressos recebidos, tweets mais recentes e muito mais! Os usuários podem adicionar os widgets\neles gostam e mudam o fundo ao seu gosto.",
+    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an overview of your upcoming appointments, urgent emails, chat messages, incoming tickets, latest tweets and much more! People can add the widgets they like and change the background to their liking." : "Comece o dia informado \n\nO Nextcloud Dashboard é o seu ponto de partida do dia, oferecendo uma visão geral de seus próximos agendamentos, e-mails urgentes, mensagens de bate-papo, tickets recebidos, tweets mais recentes e muito mais! As pessoas podem adicionar os widgets que desejarem e alterar o plano de fundo de acordo com sua preferência.",
+    "\"{title} icon\"" : "\"{title} icon\"",
     "Customize" : "Personalizar",
     "Edit widgets" : "Editar widgets",
     "Get more widgets from the App Store" : "Obtenha mais widgets na App Store",
@@ -22,11 +23,7 @@ OC.L10N.register(
     "Good evening, {name}" : "Boa noite, {name}",
     "Hello" : "Olá",
     "Hello, {name}" : "Olá, {name}",
-    "Show something" : "Mostrar alguma coisa",
-    "Change background image" : "Mudar imagem de fundo",
-    "Pick from Files" : "Escolher de Arquivos",
-    "Default images" : "Imagens padrão",
-    "Plain background" : "Fundo simples",
-    "Insert from {productName}" : "Inserir de {productName}"
+    "Happy birthday 🥳🤩🎂🎉" : "Feliz Aniversário 🥳🤩🎂🎉",
+    "Happy birthday, {name} 🥳🤩🎂🎉" : "Feliz Aniversário, {name} 🥳🤩🎂🎉"
 },
 "nplurals=3; plural=(n == 0 || n == 1) ? 0 : n != 0 && n % 1000000 == 0 ? 1 : 2;");

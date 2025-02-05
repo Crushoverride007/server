@@ -1,3 +1,7 @@
+/**
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 function showEmailAddressPromptForm() {
 	// Shows email prompt
 	var emailInput = document.getElementById('email-input-form');
@@ -47,6 +51,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 	// Adds functionality to the request password button
 	var passwordRequestButton = document.getElementById('request-password-button-not-talk');
-	passwordRequestButton.addEventListener('click', showEmailAddressPromptForm);
+	if (passwordRequestButton) {
+		passwordRequestButton.addEventListener('click', showEmailAddressPromptForm);
+	}
 
 });

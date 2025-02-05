@@ -3,30 +3,12 @@
 declare(strict_types=1);
 
 /**
- * @copyright 2022 Christopher Ng <chrng8@gmail.com>
- *
- * @author Christopher Ng <chrng8@gmail.com>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2022 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace OCA\DAV\UserMigration;
 
-use function Safe\substr;
 use OCA\DAV\AppInfo\Application;
 use OCA\DAV\CalDAV\CalDavBackend;
 use OCA\DAV\CalDAV\ICSExportPlugin\ICSExportPlugin;
@@ -50,25 +32,14 @@ use Sabre\VObject\Component\VTimeZone;
 use Sabre\VObject\Property\ICalendar\DateTime;
 use Sabre\VObject\Reader as VObjectReader;
 use Sabre\VObject\UUIDUtil;
-use Safe\Exceptions\StringsException;
 use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 use Throwable;
+use function substr;
 
 class CalendarMigrator implements IMigrator, ISizeEstimationMigrator {
 
 	use TMigratorBasicVersionHandling;
-
-	private CalDavBackend $calDavBackend;
-
-	private ICalendarManager $calendarManager;
-
-	// ICSExportPlugin is injected as the mergeObjects() method is required and is not to be used as a SabreDAV server plugin
-	private ICSExportPlugin $icsExportPlugin;
-
-	private Defaults $defaults;
-
-	private IL10N $l10n;
 
 	private SabreDavServer $sabreDavServer;
 
@@ -81,18 +52,12 @@ class CalendarMigrator implements IMigrator, ISizeEstimationMigrator {
 	private const EXPORT_ROOT = Application::APP_ID . '/calendars/';
 
 	public function __construct(
-		CalDavBackend $calDavBackend,
-		ICalendarManager $calendarManager,
-		ICSExportPlugin $icsExportPlugin,
-		Defaults $defaults,
-		IL10N $l10n
+		private CalDavBackend $calDavBackend,
+		private ICalendarManager $calendarManager,
+		private ICSExportPlugin $icsExportPlugin,
+		private Defaults $defaults,
+		private IL10N $l10n,
 	) {
-		$this->calDavBackend = $calDavBackend;
-		$this->calendarManager = $calendarManager;
-		$this->icsExportPlugin = $icsExportPlugin;
-		$this->defaults = $defaults;
-		$this->l10n = $l10n;
-
 		$root = new RootCollection();
 		$this->sabreDavServer = new SabreDavServer(new CachingTree($root));
 		$this->sabreDavServer->addPlugin(new CalDAVPlugin());
@@ -183,14 +148,18 @@ class CalendarMigrator implements IMigrator, ISizeEstimationMigrator {
 		)));
 	}
 
+	/**
+	 * @throws InvalidCalendarException
+	 */
 	private function getUniqueCalendarUri(IUser $user, string $initialCalendarUri): string {
 		$principalUri = $this->getPrincipalUri($user);
-		try {
-			$initialCalendarUri = substr($initialCalendarUri, 0, strlen(CalendarMigrator::MIGRATED_URI_PREFIX)) === CalendarMigrator::MIGRATED_URI_PREFIX
-				? $initialCalendarUri
-				: CalendarMigrator::MIGRATED_URI_PREFIX . $initialCalendarUri;
-		} catch (StringsException $e) {
-			throw new CalendarMigratorException('Failed to get unique calendar URI', 0, $e);
+
+		$initialCalendarUri = substr($initialCalendarUri, 0, strlen(CalendarMigrator::MIGRATED_URI_PREFIX)) === CalendarMigrator::MIGRATED_URI_PREFIX
+			? $initialCalendarUri
+			: CalendarMigrator::MIGRATED_URI_PREFIX . $initialCalendarUri;
+
+		if ($initialCalendarUri === '') {
+			throw new InvalidCalendarException();
 		}
 
 		$existingCalendarUris = array_map(
@@ -211,7 +180,7 @@ class CalendarMigrator implements IMigrator, ISizeEstimationMigrator {
 	/**
 	 * {@inheritDoc}
 	 */
-	public function getEstimatedExportSize(IUser $user): int {
+	public function getEstimatedExportSize(IUser $user): int|float {
 		$calendarExports = $this->getCalendarExports($user, new NullOutput());
 		$calendarCount = count($calendarExports);
 
@@ -230,7 +199,7 @@ class CalendarMigrator implements IMigrator, ISizeEstimationMigrator {
 		// 450B for each component (events, todos, alarms, etc.)
 		$size += ($componentCount * 450) / 1024;
 
-		return (int)ceil($size);
+		return ceil($size);
 	}
 
 	/**
@@ -457,17 +426,20 @@ class CalendarMigrator implements IMigrator, ISizeEstimationMigrator {
 					VObjectReader::OPTION_FORGIVING,
 				);
 			} catch (Throwable $e) {
-				throw new CalendarMigratorException("Failed to read file \"$importPath\"", 0, $e);
+				$output->writeln("Failed to read file \"$importPath\", skipping…");
+				continue;
 			}
 
 			$problems = $vCalendar->validate();
 			if (!empty($problems)) {
-				throw new CalendarMigratorException("Invalid calendar data contained in \"$importPath\"");
+				$output->writeln("Invalid calendar data contained in \"$importPath\", skipping…");
+				continue;
 			}
 
 			$splitFilename = explode('.', $filename, 2);
 			if (count($splitFilename) !== 2) {
-				throw new CalendarMigratorException("Invalid filename \"$filename\", expected filename of the format \"<calendar_name>" . CalendarMigrator::FILENAME_EXT . '"');
+				$output->writeln("Invalid filename \"$filename\", expected filename of the format \"<calendar_name>" . CalendarMigrator::FILENAME_EXT . '", skipping…');
+				continue;
 			}
 			[$initialCalendarUri, $ext] = $splitFilename;
 

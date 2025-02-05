@@ -1,25 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Files\Tests\BackgroundJob;
 
@@ -28,6 +12,7 @@ use OC\Files\Storage\Temporary;
 use OCA\Files\BackgroundJob\ScanFiles;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\EventDispatcher\IEventDispatcher;
+use OCP\Files\Config\IUserMountCache;
 use OCP\IConfig;
 use OCP\IUser;
 use Psr\Log\LoggerInterface;
@@ -47,7 +32,7 @@ class ScanFilesTest extends TestCase {
 
 	/** @var ScanFiles */
 	private $scanFiles;
-	/** @var \OCP\Files\Config\IUserMountCache */
+	/** @var IUserMountCache */
 	private $mountCache;
 
 	protected function setUp(): void {
@@ -95,7 +80,7 @@ class ScanFilesTest extends TestCase {
 		return $storage;
 	}
 
-	public function testAllScanned() {
+	public function testAllScanned(): void {
 		$this->setupStorage('foouser', '/foousers/files/foo');
 
 		$this->scanFiles->expects($this->never())
@@ -103,7 +88,7 @@ class ScanFilesTest extends TestCase {
 		$this->runJob();
 	}
 
-	public function testUnscanned() {
+	public function testUnscanned(): void {
 		$storage = $this->setupStorage('foouser', '/foousers/files/foo');
 		$storage->getCache()->put('foo', ['size' => -1]);
 

@@ -1,43 +1,10 @@
 <?php
 
 declare(strict_types=1);
-
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Andreas Fischer <bantu@owncloud.com>
- * @author bladewing <lukas@ifflaender-family.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Hendrik Leppelsack <hendrik@leppelsack.de>
- * @author Jens-Christian Fischer <jens-christian.fischer@switch.ch>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author lui87kw <lukas.ifflaender@uni-wuerzburg.de>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Magnus Walbeck <mw@mwalbeck.org>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Tanghus <thomas@tanghus.net>
- * @author Vincent Petry <vincent@nextcloud.com>
- * @author Xheni Myrtaj <myrtajxheni@gmail.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Type;
 
@@ -56,32 +23,19 @@ class Detection implements IMimeTypeDetector {
 	private const CUSTOM_MIMETYPEMAPPING = 'mimetypemapping.json';
 	private const CUSTOM_MIMETYPEALIASES = 'mimetypealiases.json';
 
-	protected $mimetypes = [];
-	protected $secureMimeTypes = [];
+	protected array $mimetypes = [];
+	protected array $secureMimeTypes = [];
 
-	protected $mimetypeIcons = [];
-	/** @var string[] */
-	protected $mimeTypeAlias = [];
+	protected array $mimetypeIcons = [];
+	/** @var array<string,string> */
+	protected array $mimeTypeAlias = [];
 
-	/** @var IURLGenerator */
-	private $urlGenerator;
-
-	private LoggerInterface $logger;
-
-	/** @var string */
-	private $customConfigDir;
-
-	/** @var string */
-	private $defaultConfigDir;
-
-	public function __construct(IURLGenerator $urlGenerator,
-								LoggerInterface $logger,
-								string $customConfigDir,
-								string $defaultConfigDir) {
-		$this->urlGenerator = $urlGenerator;
-		$this->logger = $logger;
-		$this->customConfigDir = $customConfigDir;
-		$this->defaultConfigDir = $defaultConfigDir;
+	public function __construct(
+		private IURLGenerator $urlGenerator,
+		private LoggerInterface $logger,
+		private string $customConfigDir,
+		private string $defaultConfigDir,
+	) {
 	}
 
 	/**
@@ -96,8 +50,8 @@ class Detection implements IMimeTypeDetector {
 	 * @param string|null $secureMimeType
 	 */
 	public function registerType(string $extension,
-								 string $mimetype,
-								 ?string $secureMimeType = null): void {
+		string $mimetype,
+		?string $secureMimeType = null): void {
 		$this->mimetypes[$extension] = [$mimetype, $secureMimeType];
 		$this->secureMimeTypes[$mimetype] = $secureMimeType ?: $mimetype;
 	}
@@ -116,7 +70,7 @@ class Detection implements IMimeTypeDetector {
 
 		// Update the alternative mimetypes to avoid having to look them up each time.
 		foreach ($this->mimetypes as $extension => $mimeType) {
-			if (strpos($extension, '_comment') === 0) {
+			if (str_starts_with($extension, '_comment')) {
 				continue;
 			}
 			$this->secureMimeTypes[$mimeType[0]] = $mimeType[1] ?? $mimeType[0];
@@ -151,7 +105,7 @@ class Detection implements IMimeTypeDetector {
 	}
 
 	/**
-	 * @return string[]
+	 * @return array<string,string>
 	 */
 	public function getAllAliases(): array {
 		$this->loadAliases();
@@ -202,7 +156,6 @@ class Detection implements IMimeTypeDetector {
 
 		// note: leading dot doesn't qualify as extension
 		if (strpos($fileName, '.') > 0) {
-
 			// remove versioning extension: name.v1508946057 and transfer extension: name.ocTransferId2057600214.part
 			$fileName = preg_replace('!((\.v\d+)|((\.ocTransferId\d+)?\.part))$!', '', $fileName);
 
@@ -239,7 +192,7 @@ class Detection implements IMimeTypeDetector {
 			finfo_close($finfo);
 			if ($info) {
 				$info = strtolower($info);
-				$mimeType = strpos($info, ';') !== false ? substr($info, 0, strpos($info, ';')) : $info;
+				$mimeType = str_contains($info, ';') ? substr($info, 0, strpos($info, ';')) : $info;
 				$mimeType = $this->getSecureMimeType($mimeType);
 				if ($mimeType !== 'application/octet-stream') {
 					return $mimeType;
@@ -247,7 +200,7 @@ class Detection implements IMimeTypeDetector {
 			}
 		}
 
-		if (strpos($path, '://') !== false && strpos($path, 'file://') === 0) {
+		if (str_starts_with($path, 'file://')) {
 			// Is the file wrapped in a stream?
 			return 'application/octet-stream';
 		}
@@ -309,7 +262,7 @@ class Detection implements IMimeTypeDetector {
 		if (function_exists('finfo_open') && function_exists('finfo_file')) {
 			$finfo = finfo_open(FILEINFO_MIME);
 			$info = finfo_buffer($finfo, $data);
-			return strpos($info, ';') !== false ? substr($info, 0, strpos($info, ';')) : $info;
+			return str_contains($info, ';') ? substr($info, 0, strpos($info, ';')) : $info;
 		}
 
 		$tmpFile = \OC::$server->getTempManager()->getTemporaryFile();

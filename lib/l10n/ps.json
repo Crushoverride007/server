@@ -2,10 +2,10 @@
     "Cannot write into \"config\" directory!" : "شسیب",
     "Unknown filetype" : "د فایل ډول نامعلوم دی",
     "Invalid image" : "انځور سم نه دی",
-    "Help" : "مرسته",
+    "Files" : "فایلونه",
     "Apps" : "اپلېکشنونه",
     "Settings" : "سمونې",
-    "Users" : "کارنان",
-    "Storage is temporarily not available" : "ذخیره د لنډې مودې لپاره نشته"
+    "Storage is temporarily not available" : "ذخیره د لنډې مودې لپاره نشته",
+    "Users" : "کارنان"
 },"pluralForm" :"nplurals=2; plural=(n != 1);"
 }

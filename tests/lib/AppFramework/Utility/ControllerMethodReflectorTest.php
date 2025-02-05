@@ -1,24 +1,9 @@
 <?php
 
 /**
- * ownCloud - App Framework
- *
- * @author Bernhard Posselt
- * @copyright 2012 Bernhard Posselt <dev@bernhard-posselt.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\AppFramework\Utility;
@@ -26,7 +11,6 @@ namespace Test\AppFramework\Utility;
 use OC\AppFramework\Utility\ControllerMethodReflector;
 
 class BaseController {
-
 	/**
 	 * @Annotation
 	 */
@@ -47,7 +31,6 @@ class BaseController {
 }
 
 class MiddleController extends BaseController {
-
 	/**
 	 * @NoAnnotation
 	 */
@@ -56,18 +39,24 @@ class MiddleController extends BaseController {
 
 	public function test3() {
 	}
+
+	/**
+	 * @psalm-param int<-4, 42> $rangedOne
+	 * @psalm-param int<min, max> $rangedTwo
+	 * @return void
+	 */
+	public function test4(int $rangedOne, int $rangedTwo) {
+	}
 }
 
 class EndController extends MiddleController {
 }
 
 class ControllerMethodReflectorTest extends \Test\TestCase {
-
-
 	/**
 	 * @Annotation
 	 */
-	public function testReadAnnotation() {
+	public function testReadAnnotation(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -80,10 +69,10 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	/**
 	 * @Annotation(parameter=value)
 	 */
-	public function testGetAnnotationParameterSingle() {
+	public function testGetAnnotationParameterSingle(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
-			__CLASS__,
+			self::class,
 			__FUNCTION__
 		);
 
@@ -93,10 +82,10 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	/**
 	 * @Annotation(parameter1=value1, parameter2=value2,parameter3=value3)
 	 */
-	public function testGetAnnotationParameterMultiple() {
+	public function testGetAnnotationParameterMultiple(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
-			__CLASS__,
+			self::class,
 			__FUNCTION__
 		);
 
@@ -109,7 +98,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	 * @Annotation
 	 * @param test
 	 */
-	public function testReadAnnotationNoLowercase() {
+	public function testReadAnnotationNoLowercase(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -125,7 +114,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	 * @Annotation
 	 * @param int $test
 	 */
-	public function testReadTypeIntAnnotations() {
+	public function testReadTypeIntAnnotations(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -146,7 +135,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	/**
 	 * @requires PHP 7
 	 */
-	public function testReadTypeIntAnnotationsScalarTypes() {
+	public function testReadTypeIntAnnotationsScalarTypes(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -164,7 +153,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	 * @Annotation
 	 * @param double $test something special
 	 */
-	public function testReadTypeDoubleAnnotations() {
+	public function testReadTypeDoubleAnnotations(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -176,9 +165,9 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 
 	/**
 	 * @Annotation
-	 * @param 	string  $foo
+	 * @param string $foo
 	 */
-	public function testReadTypeWhitespaceAnnotations() {
+	public function testReadTypeWhitespaceAnnotations(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -191,7 +180,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 
 	public function arguments($arg, $arg2 = 'hi') {
 	}
-	public function testReflectParameters() {
+	public function testReflectParameters(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -204,7 +193,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 
 	public function arguments2($arg) {
 	}
-	public function testReflectParameters2() {
+	public function testReflectParameters2(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect(
 			'\Test\AppFramework\Utility\ControllerMethodReflectorTest',
@@ -215,7 +204,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	}
 
 
-	public function testInheritance() {
+	public function testInheritance(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect('Test\AppFramework\Utility\EndController', 'test');
 
@@ -223,7 +212,7 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	}
 
 
-	public function testInheritanceOverride() {
+	public function testInheritanceOverride(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect('Test\AppFramework\Utility\EndController', 'test2');
 
@@ -232,10 +221,23 @@ class ControllerMethodReflectorTest extends \Test\TestCase {
 	}
 
 
-	public function testInheritanceOverrideNoDocblock() {
+	public function testInheritanceOverrideNoDocblock(): void {
 		$reader = new ControllerMethodReflector();
 		$reader->reflect('Test\AppFramework\Utility\EndController', 'test3');
 
 		$this->assertFalse($reader->hasAnnotation('Annotation'));
+	}
+
+	public function testRangeDetection(): void {
+		$reader = new ControllerMethodReflector();
+		$reader->reflect('Test\AppFramework\Utility\EndController', 'test4');
+
+		$rangeInfo1 = $reader->getRange('rangedOne');
+		$this->assertSame(-4, $rangeInfo1['min']);
+		$this->assertSame(42, $rangeInfo1['max']);
+
+		$rangeInfo2 = $reader->getRange('rangedTwo');
+		$this->assertSame(PHP_INT_MIN, $rangeInfo2['min']);
+		$this->assertSame(PHP_INT_MAX, $rangeInfo2['max']);
 	}
 }

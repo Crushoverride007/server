@@ -1,35 +1,17 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Jagszent <daniel@jagszent.de>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC\Files\Cache\Wrapper;
 
 use OC\Files\Cache\Cache;
+use OC\Files\Cache\CacheDependencies;
 use OC\Files\Search\SearchBinaryOperator;
 use OC\Files\Search\SearchComparison;
+use OCP\Files\Cache\ICache;
 use OCP\Files\Cache\ICacheEntry;
 use OCP\Files\Search\ISearchBinaryOperator;
 use OCP\Files\Search\ISearchComparison;
@@ -39,21 +21,15 @@ use OCP\Files\Search\ISearchOperator;
  * Jail to a subdirectory of the wrapped cache
  */
 class CacheJail extends CacheWrapper {
-	/**
-	 * @var string
-	 */
-	protected $root;
-	protected $unjailedRoot;
 
-	/**
-	 * @param ?\OCP\Files\Cache\ICache $cache
-	 * @param string $root
-	 */
-	public function __construct($cache, $root) {
-		parent::__construct($cache);
-		$this->root = $root;
-		$this->connection = \OC::$server->getDatabaseConnection();
-		$this->mimetypeLoader = \OC::$server->getMimeTypeLoader();
+	protected string $unjailedRoot;
+
+	public function __construct(
+		?ICache $cache,
+		protected string $root,
+		?CacheDependencies $dependencies = null,
+	) {
+		parent::__construct($cache, $dependencies);
 
 		if ($cache instanceof CacheJail) {
 			$this->unjailedRoot = $cache->getSourcePath($root);
@@ -62,6 +38,9 @@ class CacheJail extends CacheWrapper {
 		}
 	}
 
+	/**
+	 * @return string
+	 */
 	protected function getRoot() {
 		return $this->root;
 	}
@@ -75,7 +54,10 @@ class CacheJail extends CacheWrapper {
 		return $this->unjailedRoot;
 	}
 
-	protected function getSourcePath($path) {
+	/**
+	 * @return string
+	 */
+	protected function getSourcePath(string $path) {
 		if ($path === '') {
 			return $this->getRoot();
 		} else {
@@ -88,7 +70,7 @@ class CacheJail extends CacheWrapper {
 	 * @param null|string $root
 	 * @return null|string the jailed path or null if the path is outside the jail
 	 */
-	protected function getJailedPath(string $path, string $root = null) {
+	protected function getJailedPath(string $path, ?string $root = null) {
 		if ($root === null) {
 			$root = $this->getRoot();
 		}
@@ -115,7 +97,7 @@ class CacheJail extends CacheWrapper {
 	/**
 	 * get the stored metadata of a file or folder
 	 *
-	 * @param string /int $file
+	 * @param string|int $file
 	 * @return ICacheEntry|false
 	 */
 	public function get($file) {
@@ -226,12 +208,12 @@ class CacheJail extends CacheWrapper {
 	/**
 	 * update the folder size and the size of all parent folders
 	 *
-	 * @param string|boolean $path
-	 * @param array $data (optional) meta data of the folder
+	 * @param array|ICacheEntry|null $data (optional) meta data of the folder
 	 */
-	public function correctFolderSize($path, $data = null, $isBackgroundScan = false) {
-		if ($this->getCache() instanceof Cache) {
-			$this->getCache()->correctFolderSize($this->getSourcePath($path), $data, $isBackgroundScan);
+	public function correctFolderSize(string $path, $data = null, bool $isBackgroundScan = false): void {
+		$cache = $this->getCache();
+		if ($cache instanceof Cache) {
+			$cache->correctFolderSize($this->getSourcePath($path), $data, $isBackgroundScan);
 		}
 	}
 
@@ -239,12 +221,13 @@ class CacheJail extends CacheWrapper {
 	 * get the size of a folder and set it in the cache
 	 *
 	 * @param string $path
-	 * @param array $entry (optional) meta data of the folder
-	 * @return int
+	 * @param array|null|ICacheEntry $entry (optional) meta data of the folder
+	 * @return int|float
 	 */
 	public function calculateFolderSize($path, $entry = null) {
-		if ($this->getCache() instanceof Cache) {
-			return $this->getCache()->calculateFolderSize($this->getSourcePath($path), $entry);
+		$cache = $this->getCache();
+		if ($cache instanceof Cache) {
+			return $cache->calculateFolderSize($this->getSourcePath($path), $entry);
 		} else {
 			return 0;
 		}
@@ -317,7 +300,7 @@ class CacheJail extends CacheWrapper {
 					new SearchBinaryOperator(ISearchBinaryOperator::OPERATOR_OR,
 						[
 							new SearchComparison(ISearchComparison::COMPARE_EQUAL, 'path', $this->getGetUnjailedRoot()),
-							new SearchComparison(ISearchComparison::COMPARE_LIKE_CASE_SENSITIVE, 'path', $this->getGetUnjailedRoot() . '/%'),
+							new SearchComparison(ISearchComparison::COMPARE_LIKE_CASE_SENSITIVE, 'path', SearchComparison::escapeLikeParameter($this->getGetUnjailedRoot()) . '/%'),
 						],
 					)
 				]
@@ -328,7 +311,7 @@ class CacheJail extends CacheWrapper {
 	}
 
 	public function getCacheEntryFromSearchResult(ICacheEntry $rawEntry): ?ICacheEntry {
-		if ($this->getGetUnjailedRoot() === '' || strpos($rawEntry->getPath(), $this->getGetUnjailedRoot()) === 0) {
+		if ($this->getGetUnjailedRoot() === '' || str_starts_with($rawEntry->getPath(), $this->getGetUnjailedRoot())) {
 			$rawEntry = $this->getCache()->getCacheEntryFromSearchResult($rawEntry);
 			if ($rawEntry) {
 				$jailedPath = $this->getJailedPath($rawEntry->getPath());

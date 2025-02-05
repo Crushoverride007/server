@@ -1,24 +1,7 @@
 <!--
-  - @copyright Copyright (c) 2019 John Molakvoæ <skjnldsv@protonmail.com>
-  -
-  - @author John Molakvoæ <skjnldsv@protonmail.com>
-  -
-  - @license GNU AGPL version 3 or any later version
-  -
-  - This program is free software: you can redistribute it and/or modify
-  - it under the terms of the GNU Affero General Public License as
-  - published by the Free Software Foundation, either version 3 of the
-  - License, or (at your option) any later version.
-  -
-  - This program is distributed in the hope that it will be useful,
-  - but WITHOUT ANY WARRANTY; without even the implied warranty of
-  - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  - GNU Affero General Public License for more details.
-  -
-  - You should have received a copy of the GNU Affero General Public License
-  - along with this program. If not, see <http://www.gnu.org/licenses/>.
-  -
-  -->
+  - SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
 
 <template>
 	<SharingEntrySimple :key="share.id"
@@ -27,8 +10,7 @@
 		<template #avatar>
 			<NcAvatar :user="share.shareWith"
 				:display-name="share.shareWithDisplayName"
-				class="sharing-entry__avatar"
-				tooltip-message="" />
+				class="sharing-entry__avatar" />
 		</template>
 		<NcActionText icon="icon-user">
 			{{ t('files_sharing', 'Added by {initiator}', { initiator: share.ownerDisplayName }) }}
@@ -49,15 +31,15 @@
 <script>
 import { generateUrl } from '@nextcloud/router'
 import { basename } from '@nextcloud/paths'
-import NcAvatar from '@nextcloud/vue/dist/Components/NcAvatar'
-import NcActionButton from '@nextcloud/vue/dist/Components/NcActionButton'
-import NcActionLink from '@nextcloud/vue/dist/Components/NcActionLink'
-import NcActionText from '@nextcloud/vue/dist/Components/NcActionText'
+import NcAvatar from '@nextcloud/vue/dist/Components/NcAvatar.js'
+import NcActionButton from '@nextcloud/vue/dist/Components/NcActionButton.js'
+import NcActionLink from '@nextcloud/vue/dist/Components/NcActionLink.js'
+import NcActionText from '@nextcloud/vue/dist/Components/NcActionText.js'
 
 // eslint-disable-next-line no-unused-vars
-import Share from '../models/Share'
-import SharesMixin from '../mixins/SharesMixin'
-import SharingEntrySimple from '../components/SharingEntrySimple'
+import Share from '../models/Share.js'
+import SharesMixin from '../mixins/SharesMixin.js'
+import SharingEntrySimple from '../components/SharingEntrySimple.vue'
 
 export default {
 	name: 'SharingEntryInherited',
@@ -103,13 +85,14 @@ export default {
 		flex-direction: column;
 		justify-content: space-between;
 		padding: 8px;
+		padding-inline-start: 10px;
 		line-height: 1.2em;
 		p {
 			color: var(--color-text-maxcontrast);
 		}
 	}
 	&__actions {
-		margin-left: auto;
+		margin-inline-start: auto;
 	}
 }
 </style>

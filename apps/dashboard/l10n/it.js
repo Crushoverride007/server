@@ -3,6 +3,8 @@ OC.L10N.register(
     {
     "Dashboard" : "Cruscotto",
     "Dashboard app" : "Cruscotto",
+    "Start your day informed\n\nThe Nextcloud Dashboard is your starting point of the day, giving you an overview of your upcoming appointments, urgent emails, chat messages, incoming tickets, latest tweets and much more! People can add the widgets they like and change the background to their liking." : "Inizia la giornata informato\n\nIl cruscotto di Nextcloud è il tuo punto di partenza della giornata, in grado di offrire una panoramica dei prossimi appuntamenti, email urgenti, messaggi di chat, nuove richieste, ultimi tweet e molto altro ancora! Gli utenti possono aggiungere i widget che preferiscono e modificare lo sfondo a proprio piacimento.",
+    "\"{title} icon\"" : "\"Icona {title}\"",
     "Customize" : "Personalizza",
     "Edit widgets" : "Modifica widget",
     "Get more widgets from the App Store" : "Ottieni altri widget dal negozio delle applicazioni",
@@ -21,11 +23,7 @@ OC.L10N.register(
     "Good evening, {name}" : "Buona sera, {name}",
     "Hello" : "Ciao",
     "Hello, {name}" : "Ciao {name}",
-    "Show something" : "Mostra qualcosa",
-    "Change background image" : "Cambia l'immagine di sfondo",
-    "Pick from Files" : "Scegli da File",
-    "Default images" : "Immagini predefinite",
-    "Plain background" : "Sfondo semplice",
-    "Insert from {productName}" : "Inserisci da {productName}"
+    "Happy birthday 🥳🤩🎂🎉" : "Buon compleanno 🥳🤩🎂🎉",
+    "Happy birthday, {name} 🥳🤩🎂🎉" : "Buon compleanno, {name} 🥳🤩🎂🎉"
 },
 "nplurals=3; plural=n == 1 ? 0 : n != 0 && n % 1000000 == 0 ? 1 : 2;");

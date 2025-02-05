@@ -1,24 +1,9 @@
 <?php
 
 /**
- * ownCloud
- *
- * @copyright (C) 2015 ownCloud, Inc.
- *
- * @author Bjoern Schiessle <schiessle@owncloud.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
+ * SPDX-FileCopyrightText: 2017-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 namespace Test\Encryption\Keys;
@@ -31,27 +16,29 @@ use PHPUnit\Framework\MockObject\MockObject;
 use Test\TestCase;
 
 class StorageTest extends TestCase {
-
 	/** @var Storage */
 	protected $storage;
 
-	/** @var \PHPUnit\Framework\MockObject\MockObject */
+	/** @var MockObject|\OC\Encryption\Util */
 	protected $util;
 
-	/** @var \PHPUnit\Framework\MockObject\MockObject */
+	/** @var MockObject|View */
 	protected $view;
 
-	/** @var \PHPUnit\Framework\MockObject\MockObject */
+	/** @var MockObject|IConfig */
 	protected $config;
 
 	/** @var MockObject|ICrypto */
 	protected $crypto;
+
+	private array $mkdirStack = [];
 
 	protected function setUp(): void {
 		parent::setUp();
 
 		$this->util = $this->getMockBuilder('OC\Encryption\Util')
 			->disableOriginalConstructor()
+			->setMethodsExcept(['getFileKeyDir'])
 			->getMock();
 
 		$this->view = $this->getMockBuilder(View::class)
@@ -75,8 +62,8 @@ class StorageTest extends TestCase {
 		$this->storage = new Storage($this->view, $this->util, $this->crypto, $this->config);
 	}
 
-	public function testSetFileKey() {
-		$this->config->method('getSystemValue')
+	public function testSetFileKey(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 		$this->util->expects($this->any())
@@ -101,8 +88,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testSetFileOld() {
-		$this->config->method('getSystemValue')
+	public function testSetFileOld(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.0');
 		$this->util->expects($this->any())
@@ -143,8 +130,8 @@ class StorageTest extends TestCase {
 	 * @param bool $originalKeyExists
 	 * @param string $expectedKeyContent
 	 */
-	public function testGetFileKey($path, $strippedPartialName, $originalKeyExists, $expectedKeyContent) {
-		$this->config->method('getSystemValue')
+	public function testGetFileKey($path, $strippedPartialName, $originalKeyExists, $expectedKeyContent): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 		$this->util->expects($this->any())
@@ -199,8 +186,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testSetFileKeySystemWide() {
-		$this->config->method('getSystemValue')
+	public function testSetFileKeySystemWide(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 
@@ -231,8 +218,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testGetFileKeySystemWide() {
-		$this->config->method('getSystemValue')
+	public function testGetFileKeySystemWide(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 
@@ -259,8 +246,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testSetSystemUserKey() {
-		$this->config->method('getSystemValue')
+	public function testSetSystemUserKey(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 
@@ -279,8 +266,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testSetUserKey() {
-		$this->config->method('getSystemValue')
+	public function testSetUserKey(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 
@@ -299,8 +286,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testGetSystemUserKey() {
-		$this->config->method('getSystemValue')
+	public function testGetSystemUserKey(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 
@@ -322,8 +309,8 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testGetUserKey() {
-		$this->config->method('getSystemValue')
+	public function testGetUserKey(): void {
+		$this->config->method('getSystemValueString')
 			->with('version')
 			->willReturn('20.0.0.2');
 
@@ -345,7 +332,7 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testDeleteUserKey() {
+	public function testDeleteUserKey(): void {
 		$this->view->expects($this->once())
 			->method('file_exists')
 			->with($this->equalTo('/user1/files_encryption/encModule/user1.publicKey'))
@@ -360,7 +347,7 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testDeleteSystemUserKey() {
+	public function testDeleteSystemUserKey(): void {
 		$this->view->expects($this->once())
 			->method('file_exists')
 			->with($this->equalTo('/files_encryption/encModule/shareKey_56884'))
@@ -375,7 +362,7 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testDeleteFileKeySystemWide() {
+	public function testDeleteFileKeySystemWide(): void {
 		$this->util->expects($this->any())
 			->method('getUidAndFilename')
 			->willReturn(['user1', '/files/foo.txt']);
@@ -399,7 +386,7 @@ class StorageTest extends TestCase {
 		);
 	}
 
-	public function testDeleteFileKey() {
+	public function testDeleteFileKey(): void {
 		$this->util->expects($this->any())
 			->method('getUidAndFilename')
 			->willReturn(['user1', '/files/foo.txt']);
@@ -426,7 +413,7 @@ class StorageTest extends TestCase {
 	/**
 	 * @dataProvider dataProviderCopyRename
 	 */
-	public function testRenameKeys($source, $target, $systemWideMountSource, $systemWideMountTarget, $expectedSource, $expectedTarget) {
+	public function testRenameKeys($source, $target, $systemWideMountSource, $systemWideMountTarget, $expectedSource, $expectedTarget): void {
 		$this->view->expects($this->any())
 			->method('file_exists')
 			->willReturn(true);
@@ -457,7 +444,7 @@ class StorageTest extends TestCase {
 	/**
 	 * @dataProvider dataProviderCopyRename
 	 */
-	public function testCopyKeys($source, $target, $systemWideMountSource, $systemWideMountTarget, $expectedSource, $expectedTarget) {
+	public function testCopyKeys($source, $target, $systemWideMountSource, $systemWideMountTarget, $expectedSource, $expectedTarget): void {
 		$this->view->expects($this->any())
 			->method('file_exists')
 			->willReturn(true);
@@ -532,7 +519,7 @@ class StorageTest extends TestCase {
 	 * @param string $storageRoot
 	 * @param string $expected
 	 */
-	public function testGetPathToKeys($path, $systemWideMountPoint, $storageRoot, $expected) {
+	public function testGetPathToKeys($path, $systemWideMountPoint, $storageRoot, $expected): void {
 		$this->invokePrivate($this->storage, 'root_dir', [$storageRoot]);
 
 		$this->util->expects($this->any())
@@ -556,7 +543,7 @@ class StorageTest extends TestCase {
 		];
 	}
 
-	public function testKeySetPreparation() {
+	public function testKeySetPreparation(): void {
 		$this->view->expects($this->any())
 			->method('file_exists')
 			->willReturn(false);
@@ -582,45 +569,12 @@ class StorageTest extends TestCase {
 		$this->assertSame($expected, $args[0]);
 	}
 
-	/**
-	 * @dataProvider dataTestGetFileKeyDir
-	 *
-	 * @param bool $isSystemWideMountPoint
-	 * @param string $storageRoot
-	 * @param string $expected
-	 */
-	public function testGetFileKeyDir($isSystemWideMountPoint, $storageRoot, $expected) {
-		$path = '/user1/files/foo/bar.txt';
-		$owner = 'user1';
-		$relativePath = '/foo/bar.txt';
-
-		$this->invokePrivate($this->storage, 'root_dir', [$storageRoot]);
-
-		$this->util->expects($this->once())->method('isSystemWideMountPoint')
-			->willReturn($isSystemWideMountPoint);
-		$this->util->expects($this->once())->method('getUidAndFilename')
-			->with($path)->willReturn([$owner, $relativePath]);
-
-		$this->assertSame($expected,
-			$this->invokePrivate($this->storage, 'getFileKeyDir', ['OC_DEFAULT_MODULE', $path])
-		);
-	}
-
-	public function dataTestGetFileKeyDir() {
-		return [
-			[false, '', '/user1/files_encryption/keys/foo/bar.txt/OC_DEFAULT_MODULE/'],
-			[true, '', '/files_encryption/keys/foo/bar.txt/OC_DEFAULT_MODULE/'],
-			[false, 'newStorageRoot', '/newStorageRoot/user1/files_encryption/keys/foo/bar.txt/OC_DEFAULT_MODULE/'],
-			[true, 'newStorageRoot', '/newStorageRoot/files_encryption/keys/foo/bar.txt/OC_DEFAULT_MODULE/'],
-		];
-	}
-
 
 	/**
 	 * @dataProvider dataTestBackupUserKeys
 	 * @param bool $createBackupDir
 	 */
-	public function testBackupUserKeys($createBackupDir) {
+	public function testBackupUserKeys($createBackupDir): void {
 		$storage = $this->getMockBuilder('OC\Encryption\Keys\Storage')
 			->setConstructorArgs([$this->view, $this->util, $this->crypto, $this->config])
 			->setMethods(['getTimestamp'])

@@ -1,34 +1,18 @@
 <?php
 /**
- * @copyright Copyright (c) 2017 Morris Jobke <hey@morrisjobke.de>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 $expectedFiles = [
-	'..',
 	'.',
-	'.codecov.yml',
+	'..',
 	'.devcontainer',
-	'.drone.yml',
 	'.editorconfig',
 	'.eslintignore',
 	'.eslintrc.js',
 	'.git',
+	'.git-blame-ignore-revs',
 	'.gitattributes',
 	'.github',
 	'.gitignore',
@@ -40,59 +24,69 @@ $expectedFiles = [
 	'.npmignore',
 	'.php-cs-fixer.dist.php',
 	'.pre-commit-config.yaml',
+	'.reuse',
 	'.scrutinizer.yml',
 	'.tag',
 	'.tx',
 	'.user.ini',
+	'__mocks__',
+	'__tests__',
 	'3rdparty',
-	'apps',
 	'AUTHORS',
+	'CHANGELOG.md',
+	'CODE_OF_CONDUCT.md',
+	'COPYING',
+	'COPYING-README',
+	'DESIGN.md',
+	'Makefile',
+	'README.md',
+	'SECURITY.md',
+	'apps',
 	'autotest-checkers.sh',
 	'autotest-external.sh',
-	'autotest-js.sh',
 	'autotest.sh',
 	'babel.config.js',
 	'build',
-	'CHANGELOG.md',
-	'CODE_OF_CONDUCT.md',
+	'codecov.yml',
 	'composer.json',
 	'composer.lock',
 	'config',
 	'console.php',
 	'contribute',
-	'COPYING-README',
-	'COPYING',
 	'core',
 	'cron.php',
+	'custom.d.ts',
+	'cypress.config.ts',
+	'cypress.d.ts',
+	'cypress',
 	'dist',
 	'index.html',
 	'index.php',
-	'jest.config.js',
 	'lib',
-	'Makefile',
+	'LICENSES',
 	'occ',
-	'ocm-provider',
-	'ocs-provider',
 	'ocs',
+	'ocs-provider',
 	'package-lock.json',
 	'package.json',
+	'psalm-ncu.xml',
 	'psalm-ocp.xml',
 	'psalm.xml',
 	'public.php',
-	'README.md',
 	'remote.php',
 	'resources',
 	'robots.txt',
-	'SECURITY.md',
 	'status.php',
+	'stylelint.config.js',
 	'tests',
 	'themes',
+	'tsconfig.json',
 	'vendor-bin',
 	'version.php',
+	'vitest.config.ts',
 	'webpack.common.js',
-	'webpack.dev.js',
+	'webpack.config.js',
 	'webpack.modules.js',
-	'webpack.prod.js',
 ];
 $actualFiles = [];
 

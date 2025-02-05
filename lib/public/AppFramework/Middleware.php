@@ -1,30 +1,13 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Stefan Weil <sw@weilnetz.de>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Thomas Tanghus <thomas@tanghus.net>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCP\AppFramework;
 
+use Exception;
 use OCP\AppFramework\Http\Response;
 
 /**
@@ -35,8 +18,6 @@ use OCP\AppFramework\Http\Response;
  * @since 6.0.0
  */
 abstract class Middleware {
-
-
 	/**
 	 * This is being run in normal order before the controller is being
 	 * called which allows several modifications and checks
@@ -44,9 +25,10 @@ abstract class Middleware {
 	 * @param Controller $controller the controller that is being called
 	 * @param string $methodName the name of the method that will be called on
 	 *                           the controller
+	 * @return void
 	 * @since 6.0.0
 	 */
-	public function beforeController($controller, $methodName) {
+	public function beforeController(Controller $controller, string $methodName) {
 	}
 
 
@@ -60,12 +42,12 @@ abstract class Middleware {
 	 * @param Controller $controller the controller that is being called
 	 * @param string $methodName the name of the method that will be called on
 	 *                           the controller
-	 * @param \Exception $exception the thrown exception
-	 * @throws \Exception the passed in exception if it can't handle it
+	 * @param Exception $exception the thrown exception
+	 * @throws Exception the passed in exception if it can't handle it
 	 * @return Response a Response object in case that the exception was handled
 	 * @since 6.0.0
 	 */
-	public function afterException($controller, $methodName, \Exception $exception) {
+	public function afterException(Controller $controller, string $methodName, Exception $exception) {
 		throw $exception;
 	}
 
@@ -81,7 +63,7 @@ abstract class Middleware {
 	 * @return Response a Response object
 	 * @since 6.0.0
 	 */
-	public function afterController($controller, $methodName, Response $response) {
+	public function afterController(Controller $controller, string $methodName, Response $response) {
 		return $response;
 	}
 
@@ -97,7 +79,7 @@ abstract class Middleware {
 	 * @return string the output that should be printed
 	 * @since 6.0.0
 	 */
-	public function beforeOutput($controller, $methodName, $output) {
+	public function beforeOutput(Controller $controller, string $methodName, string $output) {
 		return $output;
 	}
 }

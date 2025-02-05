@@ -1,10 +1,8 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
-
 namespace Icewind\Streams;
 
 /**
@@ -58,7 +56,7 @@ class CallbackWrapper extends Wrapper {
 	 * @param callable|null $close (optional)
 	 * @param callable|null $readDir (optional)
 	 * @param callable|null $preClose (optional)
-	 * @return resource|bool
+	 * @return resource|false
 	 *
 	 */
 	public static function wrap($source, $read = null, $write = null, $close = null, $readDir = null, $preClose = null) {

@@ -1,46 +1,25 @@
 <?php
-/**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Aldo "xoen" Giambelluca <xoen@xoen.org>
- * @author Andreas Fischer <bantu@owncloud.com>
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bartek Przybylski <bart.p.pl@gmail.com>
- * @author Björn Schießle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Jakob Sack <mail@jakobsack.de>
- * @author Jörn Friedrich Dreyer <jfd@butonic.de>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Robin Appelman <robin@icewind.nl>
- * @author Robin McCorkell <robin@mccorkell.me.uk>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author shkdee <louis.traynard@m4x.org>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
- */
 
+/**
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+use OC\Authentication\Token\IProvider;
 use OC\User\LoginException;
+use OCP\Authentication\Exceptions\InvalidTokenException;
+use OCP\Authentication\Exceptions\WipeTokenException;
+use OCP\Authentication\Token\IToken;
 use OCP\EventDispatcher\IEventDispatcher;
-use OCP\ILogger;
+use OCP\IGroupManager;
+use OCP\ISession;
+use OCP\IUser;
 use OCP\IUserManager;
+use OCP\Server;
+use OCP\Session\Exceptions\SessionNotAvailableException;
+use OCP\User\Events\BeforeUserLoggedInEvent;
 use OCP\User\Events\UserLoggedInEvent;
+use Psr\Log\LoggerInterface;
 
 /**
  * This class provides wrapper methods for user management. Multiple backends are
@@ -83,7 +62,7 @@ class OC_User {
 			\OC::$server->getUserManager()->registerBackend($backend);
 		} else {
 			// You'll never know what happens
-			if (null === $backend or !is_string($backend)) {
+			if ($backend === null or !is_string($backend)) {
 				$backend = 'database';
 			}
 
@@ -92,7 +71,7 @@ class OC_User {
 				case 'database':
 				case 'mysql':
 				case 'sqlite':
-					\OCP\Util::writeLog('core', 'Adding user backend ' . $backend . '.', ILogger::DEBUG);
+					Server::get(LoggerInterface::class)->debug('Adding user backend ' . $backend . '.', ['app' => 'core']);
 					self::$_usedBackends[$backend] = new \OC\User\Database();
 					\OC::$server->getUserManager()->registerBackend(self::$_usedBackends[$backend]);
 					break;
@@ -101,7 +80,7 @@ class OC_User {
 					\OC::$server->getUserManager()->registerBackend(self::$_usedBackends[$backend]);
 					break;
 				default:
-					\OCP\Util::writeLog('core', 'Adding default user backend ' . $backend . '.', ILogger::DEBUG);
+					Server::get(LoggerInterface::class)->debug('Adding default user backend ' . $backend . '.', ['app' => 'core']);
 					$className = 'OC_USER_' . strtoupper($backend);
 					self::$_usedBackends[$backend] = new $className();
 					\OC::$server->getUserManager()->registerBackend(self::$_usedBackends[$backend]);
@@ -137,7 +116,7 @@ class OC_User {
 			$class = $config['class'];
 			$arguments = $config['arguments'];
 			if (class_exists($class)) {
-				if (array_search($i, self::$_setupedBackends) === false) {
+				if (!in_array($i, self::$_setupedBackends)) {
 					// make a reflection object
 					$reflectionObj = new ReflectionClass($class);
 
@@ -146,10 +125,10 @@ class OC_User {
 					self::useBackend($backend);
 					self::$_setupedBackends[] = $i;
 				} else {
-					\OCP\Util::writeLog('core', 'User backend ' . $class . ' already initialized.', ILogger::DEBUG);
+					Server::get(LoggerInterface::class)->debug('User backend ' . $class . ' already initialized.', ['app' => 'core']);
 				}
 			} else {
-				\OCP\Util::writeLog('core', 'User backend ' . $class . ' not found.', ILogger::ERROR);
+				Server::get(LoggerInterface::class)->error('User backend ' . $class . ' not found.', ['app' => 'core']);
 			}
 		}
 	}
@@ -166,14 +145,18 @@ class OC_User {
 	public static function loginWithApache(\OCP\Authentication\IApacheBackend $backend) {
 		$uid = $backend->getCurrentUserId();
 		$run = true;
-		OC_Hook::emit("OC_User", "pre_login", ["run" => &$run, "uid" => $uid, 'backend' => $backend]);
+		OC_Hook::emit('OC_User', 'pre_login', ['run' => &$run, 'uid' => $uid, 'backend' => $backend]);
 
 		if ($uid) {
 			if (self::getUser() !== $uid) {
 				self::setUserId($uid);
 				$userSession = \OC::$server->getUserSession();
+
+				/** @var IEventDispatcher $dispatcher */
+				$dispatcher = \OC::$server->get(IEventDispatcher::class);
+
 				if ($userSession->getUser() && !$userSession->getUser()->isEnabled()) {
-					$message = \OC::$server->getL10N('lib')->t('User disabled');
+					$message = \OC::$server->getL10N('lib')->t('Account disabled');
 					throw new LoginException($message);
 				}
 				$userSession->setLoginName($uid);
@@ -182,8 +165,28 @@ class OC_User {
 				if ($backend instanceof \OCP\Authentication\IProvideUserSecretBackend) {
 					$password = $backend->getCurrentUserSecret();
 				}
+
+				/** @var IEventDispatcher $dispatcher */
+				$dispatcher->dispatchTyped(new BeforeUserLoggedInEvent($uid, $password, $backend));
+
 				$userSession->createSessionToken($request, $uid, $uid, $password);
 				$userSession->createRememberMeToken($userSession->getUser());
+
+				if (empty($password)) {
+					$tokenProvider = \OC::$server->get(IProvider::class);
+					try {
+						$token = $tokenProvider->getToken($userSession->getSession()->getId());
+						$token->setScope([
+							IToken::SCOPE_SKIP_PASSWORD_VALIDATION => true,
+							IToken::SCOPE_FILESYSTEM => true,
+						]);
+						$tokenProvider->updateToken($token);
+					} catch (InvalidTokenException|WipeTokenException|SessionNotAvailableException) {
+						// swallow the exceptions as we do not deal with them here
+						// simply skip updating the token when is it missing
+					}
+				}
+
 				// setup the filesystem
 				OC_Util::setupFS($uid);
 				// first call the post_login hooks, the login-process needs to be
@@ -199,13 +202,11 @@ class OC_User {
 						'isTokenLogin' => false,
 					]
 				);
-				/** @var IEventDispatcher $dispatcher */
-				$dispatcher = \OC::$server->get(IEventDispatcher::class);
 				$dispatcher->dispatchTyped(new UserLoggedInEvent(
-						\OC::$server->get(IUserManager::class)->get($uid),
-						$uid,
-						null,
-						false)
+					\OC::$server->get(IUserManager::class)->get($uid),
+					$uid,
+					null,
+					false)
 				);
 
 				//trigger creation of user home and /files folder
@@ -220,9 +221,9 @@ class OC_User {
 	 * Verify with Apache whether user is authenticated.
 	 *
 	 * @return boolean|null
-	 *          true: authenticated
-	 *          false: not authenticated
-	 *          null: not handled / no backend available
+	 *                      true: authenticated
+	 *                      false: not authenticated
+	 *                      null: not handled / no backend available
 	 */
 	public static function handleApacheAuth() {
 		$backend = self::findFirstActiveUsedBackend();
@@ -258,7 +259,7 @@ class OC_User {
 	/**
 	 * Check if the user is logged in, considers also the HTTP basic credentials
 	 *
-	 * @deprecated use \OC::$server->getUserSession()->isLoggedIn()
+	 * @deprecated 12.0.0 use \OC::$server->getUserSession()->isLoggedIn()
 	 * @return bool
 	 */
 	public static function isLoggedIn() {
@@ -296,7 +297,7 @@ class OC_User {
 		}
 
 		$user = \OC::$server->getUserSession()->getUser();
-		if ($user instanceof \OCP\IUser) {
+		if ($user instanceof IUser) {
 			$backend = $user->getBackend();
 			if ($backend instanceof \OCP\User\Backend\ICustomLogout) {
 				return $backend->getLogoutUrl();
@@ -316,12 +317,9 @@ class OC_User {
 	 * @return bool
 	 */
 	public static function isAdminUser($uid) {
-		$group = \OC::$server->getGroupManager()->get('admin');
-		$user = \OC::$server->getUserManager()->get($uid);
-		if ($group && $user && $group->inGroup($user) && self::$incognitoMode === false) {
-			return true;
-		}
-		return false;
+		$user = Server::get(IUserManager::class)->get($uid);
+		$isAdmin = $user && Server::get(IGroupManager::class)->isAdmin($user->getUID());
+		return $isAdmin && self::$incognitoMode === false;
 	}
 
 
@@ -331,7 +329,7 @@ class OC_User {
 	 * @return string|false uid or false
 	 */
 	public static function getUser() {
-		$uid = \OC::$server->getSession() ? \OC::$server->getSession()->get('user_id') : null;
+		$uid = Server::get(ISession::class)?->get('user_id');
 		if (!is_null($uid) && self::$incognitoMode === false) {
 			return $uid;
 		} else {
@@ -363,7 +361,7 @@ class OC_User {
 	 * @return string
 	 *
 	 * returns the path to the users home directory
-	 * @deprecated Use \OC::$server->getUserManager->getHome()
+	 * @deprecated 12.0.0 Use \OC::$server->getUserManager->getHome()
 	 */
 	public static function getHome($uid) {
 		$user = \OC::$server->getUserManager()->get($uid);
@@ -383,7 +381,7 @@ class OC_User {
 	 * @return array associative array with all display names (value) and corresponding uids (key)
 	 *
 	 * Get a list of all display names and user ids.
-	 * @deprecated Use \OC::$server->getUserManager->searchDisplayName($search, $limit, $offset) instead.
+	 * @deprecated 12.0.0 Use \OC::$server->getUserManager->searchDisplayName($search, $limit, $offset) instead.
 	 */
 	public static function getDisplayNames($search = '', $limit = null, $offset = null) {
 		$displayNames = [];

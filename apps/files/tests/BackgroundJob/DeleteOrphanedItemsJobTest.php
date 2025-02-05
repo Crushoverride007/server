@@ -1,30 +1,17 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2019-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\Files\Tests\BackgroundJob;
 
 use OCA\Files\BackgroundJob\DeleteOrphanedItems;
+use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\QueryBuilder\IQueryBuilder;
+use OCP\IDBConnection;
+use Psr\Log\LoggerInterface;
 
 /**
  * Class DeleteOrphanedItemsJobTest
@@ -34,13 +21,15 @@ use OCP\DB\QueryBuilder\IQueryBuilder;
  * @package Test\BackgroundJob
  */
 class DeleteOrphanedItemsJobTest extends \Test\TestCase {
-
-	/** @var \OCP\IDBConnection */
-	protected $connection;
+	protected IDBConnection $connection;
+	protected LoggerInterface $logger;
+	protected ITimeFactory $timeFactory;
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->connection = \OC::$server->getDatabaseConnection();
+		$this->connection = \OC::$server->get(IDBConnection::class);
+		$this->timeFactory = $this->createMock(ITimeFactory::class);
+		$this->logger = \OC::$server->get(LoggerInterface::class);
 	}
 
 	protected function cleanMapping($table) {
@@ -62,7 +51,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 	/**
 	 * Test clearing orphaned system tag mappings
 	 */
-	public function testClearSystemTagMappings() {
+	public function testClearSystemTagMappings(): void {
 		$this->cleanMapping('systemtag_object_mapping');
 
 		$query = $this->connection->getQueryBuilder();
@@ -95,7 +84,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 		$mapping = $this->getMappings('systemtag_object_mapping');
 		$this->assertCount(2, $mapping);
 
-		$job = new DeleteOrphanedItems();
+		$job = new DeleteOrphanedItems($this->timeFactory, $this->connection, $this->logger);
 		$this->invokePrivate($job, 'cleanSystemTags');
 
 		$mapping = $this->getMappings('systemtag_object_mapping');
@@ -111,7 +100,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 	/**
 	 * Test clearing orphaned system tag mappings
 	 */
-	public function testClearUserTagMappings() {
+	public function testClearUserTagMappings(): void {
 		$this->cleanMapping('vcategory_to_object');
 
 		$query = $this->connection->getQueryBuilder();
@@ -144,7 +133,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 		$mapping = $this->getMappings('vcategory_to_object');
 		$this->assertCount(2, $mapping);
 
-		$job = new DeleteOrphanedItems();
+		$job = new DeleteOrphanedItems($this->timeFactory, $this->connection, $this->logger);
 		$this->invokePrivate($job, 'cleanUserTags');
 
 		$mapping = $this->getMappings('vcategory_to_object');
@@ -160,7 +149,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 	/**
 	 * Test clearing orphaned system tag mappings
 	 */
-	public function testClearComments() {
+	public function testClearComments(): void {
 		$this->cleanMapping('comments');
 
 		$query = $this->connection->getQueryBuilder();
@@ -195,7 +184,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 		$mapping = $this->getMappings('comments');
 		$this->assertCount(2, $mapping);
 
-		$job = new DeleteOrphanedItems();
+		$job = new DeleteOrphanedItems($this->timeFactory, $this->connection, $this->logger);
 		$this->invokePrivate($job, 'cleanComments');
 
 		$mapping = $this->getMappings('comments');
@@ -211,7 +200,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 	/**
 	 * Test clearing orphaned system tag mappings
 	 */
-	public function testClearCommentReadMarks() {
+	public function testClearCommentReadMarks(): void {
 		$this->cleanMapping('comments_read_markers');
 
 		$query = $this->connection->getQueryBuilder();
@@ -244,7 +233,7 @@ class DeleteOrphanedItemsJobTest extends \Test\TestCase {
 		$mapping = $this->getMappings('comments_read_markers');
 		$this->assertCount(2, $mapping);
 
-		$job = new DeleteOrphanedItems();
+		$job = new DeleteOrphanedItems($this->timeFactory, $this->connection, $this->logger);
 		$this->invokePrivate($job, 'cleanCommentMarkers');
 
 		$mapping = $this->getMappings('comments_read_markers');

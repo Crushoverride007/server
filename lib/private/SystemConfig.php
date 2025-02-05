@@ -1,28 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Johannes Schlichenmaier <johannes@schlichenmaier.info>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OC;
 
@@ -34,7 +15,6 @@ use OCP\IConfig;
  * fixes cyclic DI: AllConfig needs AppConfig needs Database needs AllConfig
  */
 class SystemConfig {
-
 	/** @var array */
 	protected $sensitiveValues = [
 		'instanceid' => true,
@@ -43,6 +23,7 @@ class SystemConfig {
 		'dbhost' => true,
 		'dbpassword' => true,
 		'dbuser' => true,
+		'dbreplica' => true,
 		'activity_dbname' => true,
 		'activity_dbhost' => true,
 		'activity_dbpassword' => true,
@@ -55,7 +36,10 @@ class SystemConfig {
 		'passwordsalt' => true,
 		'secret' => true,
 		'updater.secret' => true,
+		'updater.server.url' => true,
 		'trusted_proxies' => true,
+		'preview_imaginary_url' => true,
+		'preview_imaginary_key' => true,
 		'proxyuserpwd' => true,
 		'sentry.dsn' => true,
 		'sentry.public-dsn' => true,
@@ -66,10 +50,15 @@ class SystemConfig {
 		'github.client_secret' => true,
 		'log.condition' => [
 			'shared_secret' => true,
+			'matches' => true,
 		],
 		'license-key' => true,
 		'redis' => [
 			'host' => true,
+			'password' => true,
+		],
+		'redis.cluster' => [
+			'seeds' => true,
 			'password' => true,
 		],
 		'objectstore' => [
@@ -84,6 +73,7 @@ class SystemConfig {
 				// S3
 				'key' => true,
 				'secret' => true,
+				'sse_c_key' => true,
 				// Swift v2
 				'username' => true,
 				'password' => true,
@@ -115,13 +105,33 @@ class SystemConfig {
 				],
 			],
 		],
+		'onlyoffice' => [
+			'jwt_secret' => true,
+		],
+		'PASS' => true,
 	];
 
-	/** @var Config */
-	private $config;
+	public function __construct(
+		private Config $config,
+	) {
+	}
 
-	public function __construct(Config $config) {
-		$this->config = $config;
+	/**
+	 * Since system config is admin controlled, we can tell psalm to ignore any taint
+	 *
+	 * @psalm-taint-escape sql
+	 * @psalm-taint-escape html
+	 * @psalm-taint-escape ldap
+	 * @psalm-taint-escape callable
+	 * @psalm-taint-escape file
+	 * @psalm-taint-escape ssrf
+	 * @psalm-taint-escape cookie
+	 * @psalm-taint-escape header
+	 * @psalm-taint-escape has_quotes
+	 * @psalm-pure
+	 */
+	public static function trustSystemConfig(mixed $value): mixed {
+		return $value;
 	}
 
 	/**
@@ -160,7 +170,7 @@ class SystemConfig {
 	 * @return mixed the value or $default
 	 */
 	public function getValue($key, $default = '') {
-		return $this->config->getValue($key, $default);
+		return $this->trustSystemConfig($this->config->getValue($key, $default));
 	}
 
 	/**

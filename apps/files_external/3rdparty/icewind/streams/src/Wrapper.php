@@ -1,8 +1,7 @@
 <?php
 /**
- * Copyright (c) 2014 Robin Appelman <icewind@owncloud.com>
- * This file is licensed under the Licensed under the MIT license:
- * http://opensource.org/licenses/MIT
+ * SPDX-FileCopyrightText: 2014 Robin Appelman <robin@icewind.nl>
+ * SPDX-License-Identifier: MIT
  */
 
 namespace Icewind\Streams;
@@ -44,7 +43,7 @@ abstract class Wrapper extends WrapperHandler implements File, Directory {
 
 	public function stream_seek($offset, $whence = SEEK_SET) {
 		$result = fseek($this->source, $offset, $whence);
-		return $result == 0 ? true : false;
+		return $result == 0;
 	}
 
 	public function stream_tell() {
@@ -108,5 +107,24 @@ abstract class Wrapper extends WrapperHandler implements File, Directory {
 
 	public function dir_rewinddir() {
 		return rewind($this->source);
+	}
+
+	public function getSource() {
+		return $this->source;
+	}
+
+	/**
+	 * Retrieves header/metadata from the source stream.
+	 *
+	 * This is equivalent to calling `stream_get_meta_data` on the source stream except nested stream wrappers are handled transparently
+	 *
+	 * @return array
+	 */
+	public function getMetaData(): array {
+		$meta = stream_get_meta_data($this->source);
+		while (isset($meta['wrapper_data']) && $meta['wrapper_data'] instanceof Wrapper) {
+			$meta = $meta['wrapper_data']->getMetaData();
+		}
+		return $meta;
 	}
 }

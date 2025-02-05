@@ -1,23 +1,7 @@
 <?php
 /**
- * @copyright Copyright (c) 2018, Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program.  If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 
 namespace Test\Preview;
@@ -25,6 +9,7 @@ namespace Test\Preview;
 use OC\Preview\BackgroundCleanupJob;
 use OC\Preview\Storage\Root;
 use OC\PreviewManager;
+use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\Files\File;
 use OCP\Files\IMimeTypeLoader;
 use OCP\Files\IRootFolder;
@@ -62,11 +47,13 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 	/** @var IMimeTypeLoader */
 	private $mimeTypeLoader;
 
+	private ITimeFactory $timeFactory;
+
 	protected function setUp(): void {
 		parent::setUp();
 
 		$this->userId = $this->getUniqueID();
-		$this->createUser($this->userId, $this->userId);
+		$user = $this->createUser($this->userId, $this->userId);
 
 		$storage = new \OC\Files\Storage\Temporary([]);
 		$this->registerMount($this->userId, $storage, '');
@@ -76,13 +63,14 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 		$this->loginAsUser($this->userId);
 
 		$appManager = \OC::$server->getAppManager();
-		$this->trashEnabled = $appManager->isEnabledForUser('files_trashbin', $this->userId);
+		$this->trashEnabled = $appManager->isEnabledForUser('files_trashbin', $user);
 		$appManager->disableApp('files_trashbin');
 
 		$this->connection = \OC::$server->getDatabaseConnection();
 		$this->previewManager = \OC::$server->getPreviewManager();
-		$this->rootFolder = \OC::$server->getRootFolder();
+		$this->rootFolder = \OC::$server->get(IRootFolder::class);
 		$this->mimeTypeLoader = \OC::$server->getMimeTypeLoader();
+		$this->timeFactory = \OCP\Server::get(ITimeFactory::class);
 	}
 
 	protected function tearDown(): void {
@@ -98,7 +86,7 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 
 	private function getRoot(): Root {
 		return new Root(
-			\OC::$server->getRootFolder(),
+			\OC::$server->get(IRootFolder::class),
 			\OC::$server->getSystemConfig()
 		);
 	}
@@ -108,7 +96,7 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 
 		$files = [];
 		for ($i = 0; $i < 11; $i++) {
-			$file = $userFolder->newFile($i.'.txt');
+			$file = $userFolder->newFile($i . '.txt');
 			$file->putContent('hello world!');
 			$this->previewManager->getPreview($file);
 			$files[] = $file;
@@ -133,7 +121,7 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 		return $i;
 	}
 
-	public function testCleanupSystemCron() {
+	public function testCleanupSystemCron(): void {
 		$files = $this->setup11Previews();
 		$fileIds = array_map(function (File $f) {
 			return $f->getId();
@@ -142,7 +130,7 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 		$root = $this->getRoot();
 
 		$this->assertSame(11, $this->countPreviews($root, $fileIds));
-		$job = new BackgroundCleanupJob($this->connection, $root, $this->mimeTypeLoader, true);
+		$job = new BackgroundCleanupJob($this->timeFactory, $this->connection, $root, $this->mimeTypeLoader, true);
 		$job->run([]);
 
 		foreach ($files as $file) {
@@ -157,7 +145,11 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 		$this->assertSame(0, $this->countPreviews($root, $fileIds));
 	}
 
-	public function testCleanupAjax() {
+	public function testCleanupAjax(): void {
+		if ($this->connection->getShardDefinition('filecache')) {
+			$this->markTestSkipped('ajax cron is not supported for sharded setups');
+			return;
+		}
 		$files = $this->setup11Previews();
 		$fileIds = array_map(function (File $f) {
 			return $f->getId();
@@ -166,7 +158,7 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 		$root = $this->getRoot();
 
 		$this->assertSame(11, $this->countPreviews($root, $fileIds));
-		$job = new BackgroundCleanupJob($this->connection, $root, $this->mimeTypeLoader, false);
+		$job = new BackgroundCleanupJob($this->timeFactory, $this->connection, $root, $this->mimeTypeLoader, false);
 		$job->run([]);
 
 		foreach ($files as $file) {
@@ -185,21 +177,58 @@ class BackgroundCleanupJobTest extends \Test\TestCase {
 		$this->assertSame(0, $this->countPreviews($root, $fileIds));
 	}
 
-	public function testOldPreviews() {
+	public function testOldPreviews(): void {
+		if ($this->connection->getShardDefinition('filecache')) {
+			$this->markTestSkipped('old previews are not supported for sharded setups');
+			return;
+		}
 		$appdata = \OC::$server->getAppDataDir('preview');
 
 		$f1 = $appdata->newFolder('123456781');
 		$f1->newFile('foo.jpg', 'foo');
 		$f2 = $appdata->newFolder('123456782');
 		$f2->newFile('foo.jpg', 'foo');
+		$f2 = $appdata->newFolder((string)PHP_INT_MAX - 1);
+		$f2->newFile('foo.jpg', 'foo');
+
+		/*
+		 * Cleanup of OldPreviewLocations should only remove numeric folders on AppData level,
+		 * therefore these files should stay untouched.
+		 */
+		$appdata->getFolder('/')->newFile('not-a-directory', 'foo');
+		$appdata->getFolder('/')->newFile('133742', 'bar');
 
 		$appdata = \OC::$server->getAppDataDir('preview');
-		$this->assertSame(2, count($appdata->getDirectoryListing()));
+		// AppData::getDirectoryListing filters all non-folders
+		$this->assertSame(3, count($appdata->getDirectoryListing()));
+		try {
+			$appdata->getFolder('/')->getFile('not-a-directory');
+		} catch (NotFoundException) {
+			$this->fail('Could not find file \'not-a-directory\'');
+		}
+		try {
+			$appdata->getFolder('/')->getFile('133742');
+		} catch (NotFoundException) {
+			$this->fail('Could not find file \'133742\'');
+		}
 
-		$job = new BackgroundCleanupJob($this->connection, $this->getRoot(), $this->mimeTypeLoader, true);
+		$job = new BackgroundCleanupJob($this->timeFactory, $this->connection, $this->getRoot(), $this->mimeTypeLoader, true);
 		$job->run([]);
 
 		$appdata = \OC::$server->getAppDataDir('preview');
+
+		// Check if the files created above are still present
+		// Remember: AppData::getDirectoryListing filters all non-folders
 		$this->assertSame(0, count($appdata->getDirectoryListing()));
+		try {
+			$appdata->getFolder('/')->getFile('not-a-directory');
+		} catch (NotFoundException) {
+			$this->fail('Could not find file \'not-a-directory\'');
+		}
+		try {
+			$appdata->getFolder('/')->getFile('133742');
+		} catch (NotFoundException) {
+			$this->fail('Could not find file \'133742\'');
+		}
 	}
 }

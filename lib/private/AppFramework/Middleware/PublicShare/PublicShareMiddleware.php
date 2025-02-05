@@ -1,58 +1,42 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- *
- * @license GNU AGPL version 3 or any later version
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 namespace OC\AppFramework\Middleware\PublicShare;
 
 use OC\AppFramework\Middleware\PublicShare\Exceptions\NeedAuthenticationException;
+use OCA\Files_Sharing\AppInfo\Application;
 use OCP\AppFramework\AuthPublicShareController;
-use OCP\AppFramework\Http\NotFoundResponse;
+use OCP\AppFramework\Http;
+use OCP\AppFramework\Http\TemplateResponse;
 use OCP\AppFramework\Middleware;
 use OCP\AppFramework\PublicShareController;
 use OCP\Files\NotFoundException;
 use OCP\IConfig;
 use OCP\IRequest;
 use OCP\ISession;
+use OCP\Security\Bruteforce\IThrottler;
 
 class PublicShareMiddleware extends Middleware {
-	/** @var IRequest */
-	private $request;
 
-	/** @var ISession */
-	private $session;
-
-	/** @var IConfig */
-	private $config;
-
-	public function __construct(IRequest $request, ISession $session, IConfig $config) {
-		$this->request = $request;
-		$this->session = $session;
-		$this->config = $config;
+	public function __construct(
+		private IRequest $request,
+		private ISession $session,
+		private IConfig $config,
+		private IThrottler $throttler,
+	) {
 	}
 
 	public function beforeController($controller, $methodName) {
 		if (!($controller instanceof PublicShareController)) {
 			return;
 		}
+
+		$controllerClassPath = explode('\\', get_class($controller));
+		$controllerShortClass = end($controllerClassPath);
+		$bruteforceProtectionAction = $controllerShortClass . '::' . $methodName;
+		$this->throttler->sleepDelayOrThrowOnMax($this->request->getRemoteAddress(), $bruteforceProtectionAction);
 
 		if (!$this->isLinkSharingEnabled()) {
 			throw new NotFoundException('Link sharing is disabled');
@@ -68,6 +52,8 @@ class PublicShareMiddleware extends Middleware {
 		$controller->setToken($token);
 
 		if (!$controller->isValidToken()) {
+			$this->throttle($bruteforceProtectionAction, $token);
+
 			$controller->shareNotFound();
 			throw new NotFoundException();
 		}
@@ -88,6 +74,7 @@ class PublicShareMiddleware extends Middleware {
 			throw new NeedAuthenticationException();
 		}
 
+		$this->throttle($bruteforceProtectionAction, $token);
 		throw new NotFoundException();
 	}
 
@@ -97,7 +84,9 @@ class PublicShareMiddleware extends Middleware {
 		}
 
 		if ($exception instanceof NotFoundException) {
-			return new NotFoundResponse();
+			return new TemplateResponse(Application::APP_ID, 'sharenotfound', [
+				'message' => $exception->getMessage(),
+			], 'guest', Http::STATUS_NOT_FOUND);
 		}
 
 		if ($controller instanceof AuthPublicShareController && $exception instanceof NeedAuthenticationException) {
@@ -127,5 +116,11 @@ class PublicShareMiddleware extends Middleware {
 		}
 
 		return true;
+	}
+
+	private function throttle($bruteforceProtectionAction, $token): void {
+		$ip = $this->request->getRemoteAddress();
+		$this->throttler->sleepDelay($ip, $bruteforceProtectionAction);
+		$this->throttler->registerAttempt($bruteforceProtectionAction, $ip, ['token' => $token]);
 	}
 }

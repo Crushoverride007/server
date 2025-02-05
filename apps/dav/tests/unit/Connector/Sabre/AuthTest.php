@@ -1,40 +1,22 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bjoern Schiessle <bjoern@schiessle.org>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Tests\unit\Connector\Sabre;
 
+use OC\Authentication\Exceptions\PasswordLoginForbiddenException;
 use OC\Authentication\TwoFactorAuth\Manager;
-use OC\Security\Bruteforce\Throttler;
 use OC\User\Session;
+use OCA\DAV\Connector\Sabre\Auth;
+use OCA\DAV\Connector\Sabre\Exception\PasswordLoginForbidden;
 use OCP\IRequest;
 use OCP\ISession;
 use OCP\IUser;
+use OCP\Security\Bruteforce\IThrottler;
+use PHPUnit\Framework\MockObject\MockObject;
 use Sabre\DAV\Server;
 use Sabre\HTTP\RequestInterface;
 use Sabre\HTTP\ResponseInterface;
@@ -47,17 +29,17 @@ use Test\TestCase;
  * @group DB
  */
 class AuthTest extends TestCase {
-	/** @var ISession */
+	/** @var ISession&MockObject */
 	private $session;
-	/** @var \OCA\DAV\Connector\Sabre\Auth */
+	/** @var Auth */
 	private $auth;
-	/** @var Session */
+	/** @var Session&MockObject */
 	private $userSession;
-	/** @var IRequest */
+	/** @var IRequest&MockObject */
 	private $request;
-	/** @var Manager */
+	/** @var Manager&MockObject */
 	private $twoFactorManager;
-	/** @var Throttler */
+	/** @var IThrottler&MockObject */
 	private $throttler;
 
 	protected function setUp(): void {
@@ -71,10 +53,10 @@ class AuthTest extends TestCase {
 		$this->twoFactorManager = $this->getMockBuilder(Manager::class)
 			->disableOriginalConstructor()
 			->getMock();
-		$this->throttler = $this->getMockBuilder(Throttler::class)
+		$this->throttler = $this->getMockBuilder(IThrottler::class)
 			->disableOriginalConstructor()
 			->getMock();
-		$this->auth = new \OCA\DAV\Connector\Sabre\Auth(
+		$this->auth = new Auth(
 			$this->session,
 			$this->userSession,
 			$this->request,
@@ -83,7 +65,7 @@ class AuthTest extends TestCase {
 		);
 	}
 
-	public function testIsDavAuthenticatedWithoutDavSession() {
+	public function testIsDavAuthenticatedWithoutDavSession(): void {
 		$this->session
 			->expects($this->once())
 			->method('get')
@@ -93,7 +75,7 @@ class AuthTest extends TestCase {
 		$this->assertFalse($this->invokePrivate($this->auth, 'isDavAuthenticated', ['MyTestUser']));
 	}
 
-	public function testIsDavAuthenticatedWithWrongDavSession() {
+	public function testIsDavAuthenticatedWithWrongDavSession(): void {
 		$this->session
 			->expects($this->exactly(2))
 			->method('get')
@@ -103,7 +85,7 @@ class AuthTest extends TestCase {
 		$this->assertFalse($this->invokePrivate($this->auth, 'isDavAuthenticated', ['MyTestUser']));
 	}
 
-	public function testIsDavAuthenticatedWithCorrectDavSession() {
+	public function testIsDavAuthenticatedWithCorrectDavSession(): void {
 		$this->session
 			->expects($this->exactly(2))
 			->method('get')
@@ -113,11 +95,11 @@ class AuthTest extends TestCase {
 		$this->assertTrue($this->invokePrivate($this->auth, 'isDavAuthenticated', ['MyTestUser']));
 	}
 
-	public function testValidateUserPassOfAlreadyDAVAuthenticatedUser() {
+	public function testValidateUserPassOfAlreadyDAVAuthenticatedUser(): void {
 		$user = $this->getMockBuilder(IUser::class)
 			->disableOriginalConstructor()
 			->getMock();
-		$user->expects($this->exactly(2))
+		$user->expects($this->exactly(1))
 			->method('getUID')
 			->willReturn('MyTestUser');
 		$this->userSession
@@ -125,7 +107,7 @@ class AuthTest extends TestCase {
 			->method('isLoggedIn')
 			->willReturn(true);
 		$this->userSession
-			->expects($this->exactly(2))
+			->expects($this->exactly(1))
 			->method('getUser')
 			->willReturn($user);
 		$this->session
@@ -140,7 +122,7 @@ class AuthTest extends TestCase {
 		$this->assertTrue($this->invokePrivate($this->auth, 'validateUserPass', ['MyTestUser', 'MyTestPassword']));
 	}
 
-	public function testValidateUserPassOfInvalidDAVAuthenticatedUser() {
+	public function testValidateUserPassOfInvalidDAVAuthenticatedUser(): void {
 		$user = $this->getMockBuilder(IUser::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -167,11 +149,11 @@ class AuthTest extends TestCase {
 		$this->assertFalse($this->invokePrivate($this->auth, 'validateUserPass', ['MyTestUser', 'MyTestPassword']));
 	}
 
-	public function testValidateUserPassOfInvalidDAVAuthenticatedUserWithValidPassword() {
+	public function testValidateUserPassOfInvalidDAVAuthenticatedUserWithValidPassword(): void {
 		$user = $this->getMockBuilder(IUser::class)
 			->disableOriginalConstructor()
 			->getMock();
-		$user->expects($this->exactly(3))
+		$user->expects($this->exactly(2))
 			->method('getUID')
 			->willReturn('MyTestUser');
 		$this->userSession
@@ -179,7 +161,7 @@ class AuthTest extends TestCase {
 			->method('isLoggedIn')
 			->willReturn(true);
 		$this->userSession
-			->expects($this->exactly(3))
+			->expects($this->exactly(2))
 			->method('getUser')
 			->willReturn($user);
 		$this->session
@@ -203,7 +185,7 @@ class AuthTest extends TestCase {
 		$this->assertTrue($this->invokePrivate($this->auth, 'validateUserPass', ['MyTestUser', 'MyTestPassword']));
 	}
 
-	public function testValidateUserPassWithInvalidPassword() {
+	public function testValidateUserPassWithInvalidPassword(): void {
 		$this->userSession
 			->expects($this->once())
 			->method('isLoggedIn')
@@ -220,9 +202,9 @@ class AuthTest extends TestCase {
 		$this->assertFalse($this->invokePrivate($this->auth, 'validateUserPass', ['MyTestUser', 'MyTestPassword']));
 	}
 
-	
-	public function testValidateUserPassWithPasswordLoginForbidden() {
-		$this->expectException(\OCA\DAV\Connector\Sabre\Exception\PasswordLoginForbidden::class);
+
+	public function testValidateUserPassWithPasswordLoginForbidden(): void {
+		$this->expectException(PasswordLoginForbidden::class);
 
 		$this->userSession
 			->expects($this->once())
@@ -232,7 +214,7 @@ class AuthTest extends TestCase {
 			->expects($this->once())
 			->method('logClientIn')
 			->with('MyTestUser', 'MyTestPassword')
-			->will($this->throwException(new \OC\Authentication\Exceptions\PasswordLoginForbiddenException()));
+			->will($this->throwException(new PasswordLoginForbiddenException()));
 		$this->session
 			->expects($this->once())
 			->method('close');
@@ -240,13 +222,13 @@ class AuthTest extends TestCase {
 		$this->invokePrivate($this->auth, 'validateUserPass', ['MyTestUser', 'MyTestPassword']);
 	}
 
-	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenForNonGet() {
+	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenForNonGet(): void {
 		$request = $this->getMockBuilder(RequestInterface::class)
-				->disableOriginalConstructor()
-				->getMock();
+			->disableOriginalConstructor()
+			->getMock();
 		$response = $this->getMockBuilder(ResponseInterface::class)
-				->disableOriginalConstructor()
-				->getMock();
+			->disableOriginalConstructor()
+			->getMock();
 		$this->userSession
 			->expects($this->any())
 			->method('isLoggedIn')
@@ -283,7 +265,7 @@ class AuthTest extends TestCase {
 		$this->assertSame($expectedResponse, $response);
 	}
 
-	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenAndCorrectlyDavAuthenticated() {
+	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenAndCorrectlyDavAuthenticated(): void {
 		$request = $this->getMockBuilder(RequestInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -301,11 +283,6 @@ class AuthTest extends TestCase {
 		$this->request
 			->expects($this->any())
 			->method('isUserAgent')
-			->with([
-				'/^Mozilla\/5\.0 \([A-Za-z ]+\) (mirall|csyncoC)\/.*$/',
-				'/^Mozilla\/5\.0 \(Android\) (ownCloud|Nextcloud)\-android.*$/',
-				'/^Mozilla\/5\.0 \(iOS\) (ownCloud|Nextcloud)\-iOS.*$/',
-			])
 			->willReturn(false);
 		$this->session
 			->expects($this->any())
@@ -329,8 +306,8 @@ class AuthTest extends TestCase {
 		$this->auth->check($request, $response);
 	}
 
-	
-	public function testAuthenticateAlreadyLoggedInWithoutTwoFactorChallengePassed() {
+
+	public function testAuthenticateAlreadyLoggedInWithoutTwoFactorChallengePassed(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotAuthenticated::class);
 		$this->expectExceptionMessage('2FA challenge not passed.');
 
@@ -351,11 +328,6 @@ class AuthTest extends TestCase {
 		$this->request
 			->expects($this->any())
 			->method('isUserAgent')
-			->with([
-				'/^Mozilla\/5\.0 \([A-Za-z ]+\) (mirall|csyncoC)\/.*$/',
-				'/^Mozilla\/5\.0 \(Android\) ownCloud\-android.*$/',
-				'/^Mozilla\/5\.0 \(iOS\) (ownCloud|Nextcloud)\-iOS.*$/',
-			])
 			->willReturn(false);
 		$this->session
 			->expects($this->any())
@@ -383,8 +355,8 @@ class AuthTest extends TestCase {
 		$this->auth->check($request, $response);
 	}
 
-	
-	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenAndIncorrectlyDavAuthenticated() {
+
+	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenAndIncorrectlyDavAuthenticated(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotAuthenticated::class);
 		$this->expectExceptionMessage('CSRF check not passed.');
 
@@ -405,11 +377,6 @@ class AuthTest extends TestCase {
 		$this->request
 			->expects($this->any())
 			->method('isUserAgent')
-			->with([
-				'/^Mozilla\/5\.0 \([A-Za-z ]+\) (mirall|csyncoC)\/.*$/',
-				'/^Mozilla\/5\.0 \(Android\) (ownCloud|Nextcloud)\-android.*$/',
-				'/^Mozilla\/5\.0 \(iOS\) (ownCloud|Nextcloud)\-iOS.*$/',
-			])
 			->willReturn(false);
 		$this->session
 			->expects($this->any())
@@ -433,7 +400,7 @@ class AuthTest extends TestCase {
 		$this->auth->check($request, $response);
 	}
 
-	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenForNonGetAndDesktopClient() {
+	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenForNonGetAndDesktopClient(): void {
 		$request = $this->getMockBuilder(RequestInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -451,11 +418,6 @@ class AuthTest extends TestCase {
 		$this->request
 			->expects($this->any())
 			->method('isUserAgent')
-			->with([
-				'/^Mozilla\/5\.0 \([A-Za-z ]+\) (mirall|csyncoC)\/.*$/',
-				'/^Mozilla\/5\.0 \(Android\) (ownCloud|Nextcloud)\-android.*$/',
-				'/^Mozilla\/5\.0 \(iOS\) (ownCloud|Nextcloud)\-iOS.*$/',
-			])
 			->willReturn(true);
 		$this->session
 			->expects($this->any())
@@ -480,7 +442,7 @@ class AuthTest extends TestCase {
 		$this->auth->check($request, $response);
 	}
 
-	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenForGet() {
+	public function testAuthenticateAlreadyLoggedInWithoutCsrfTokenForGet(): void {
 		$request = $this->getMockBuilder(RequestInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -515,7 +477,7 @@ class AuthTest extends TestCase {
 		$this->assertEquals([true, 'principals/users/MyWrongDavUser'], $response);
 	}
 
-	public function testAuthenticateAlreadyLoggedInWithCsrfTokenForGet() {
+	public function testAuthenticateAlreadyLoggedInWithCsrfTokenForGet(): void {
 		$request = $this->getMockBuilder(RequestInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -550,7 +512,7 @@ class AuthTest extends TestCase {
 		$this->assertEquals([true, 'principals/users/MyWrongDavUser'], $response);
 	}
 
-	public function testAuthenticateNoBasicAuthenticateHeadersProvided() {
+	public function testAuthenticateNoBasicAuthenticateHeadersProvided(): void {
 		$server = $this->getMockBuilder(Server::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -564,16 +526,16 @@ class AuthTest extends TestCase {
 		$this->assertEquals([false, 'No \'Authorization: Basic\' header found. Either the client didn\'t send one, or the server is misconfigured'], $response);
 	}
 
-	
-	public function testAuthenticateNoBasicAuthenticateHeadersProvidedWithAjax() {
+
+	public function testAuthenticateNoBasicAuthenticateHeadersProvidedWithAjax(): void {
 		$this->expectException(\Sabre\DAV\Exception\NotAuthenticated::class);
 		$this->expectExceptionMessage('Cannot authenticate over ajax calls');
 
-		/** @var \Sabre\HTTP\RequestInterface $httpRequest */
+		/** @var \Sabre\HTTP\RequestInterface&MockObject $httpRequest */
 		$httpRequest = $this->getMockBuilder(RequestInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
-		/** @var \Sabre\HTTP\ResponseInterface $httpResponse */
+		/** @var \Sabre\HTTP\ResponseInterface&MockObject $httpResponse */
 		$httpResponse = $this->getMockBuilder(ResponseInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -582,14 +544,63 @@ class AuthTest extends TestCase {
 			->method('isLoggedIn')
 			->willReturn(false);
 		$httpRequest
-			->expects($this->once())
+			->expects($this->exactly(2))
 			->method('getHeader')
-			->with('X-Requested-With')
-			->willReturn('XMLHttpRequest');
+			->willReturnMap([
+				['X-Requested-With', 'XMLHttpRequest'],
+				['Authorization', null],
+			]);
+
 		$this->auth->check($httpRequest, $httpResponse);
 	}
 
-	public function testAuthenticateNoBasicAuthenticateHeadersProvidedWithAjaxButUserIsStillLoggedIn() {
+	public function testAuthenticateWithBasicAuthenticateHeadersProvidedWithAjax(): void {
+		// No CSRF
+		$this->request
+			->expects($this->once())
+			->method('passesCSRFCheck')
+			->willReturn(false);
+
+		/** @var \Sabre\HTTP\RequestInterface&MockObject $httpRequest */
+		$httpRequest = $this->getMockBuilder(RequestInterface::class)
+			->disableOriginalConstructor()
+			->getMock();
+		/** @var \Sabre\HTTP\ResponseInterface&MockObject $httpResponse */
+		$httpResponse = $this->getMockBuilder(ResponseInterface::class)
+			->disableOriginalConstructor()
+			->getMock();
+		$httpRequest
+			->expects($this->any())
+			->method('getHeader')
+			->willReturnMap([
+				['X-Requested-With', 'XMLHttpRequest'],
+				['Authorization', 'basic dXNlcm5hbWU6cGFzc3dvcmQ='],
+			]);
+
+		$user = $this->getMockBuilder(IUser::class)
+			->disableOriginalConstructor()
+			->getMock();
+		$user->expects($this->any())
+			->method('getUID')
+			->willReturn('MyDavUser');
+		$this->userSession
+			->expects($this->any())
+			->method('isLoggedIn')
+			->willReturn(false);
+		$this->userSession
+			->expects($this->once())
+			->method('logClientIn')
+			->with('username', 'password')
+			->willReturn(true);
+		$this->userSession
+			->expects($this->any())
+			->method('getUser')
+			->willReturn($user);
+
+		$this->auth->check($httpRequest, $httpResponse);
+	}
+
+	public function testAuthenticateNoBasicAuthenticateHeadersProvidedWithAjaxButUserIsStillLoggedIn(): void {
 		/** @var \Sabre\HTTP\RequestInterface $httpRequest */
 		$httpRequest = $this->getMockBuilder(RequestInterface::class)
 			->disableOriginalConstructor()
@@ -631,7 +642,7 @@ class AuthTest extends TestCase {
 		);
 	}
 
-	public function testAuthenticateValidCredentials() {
+	public function testAuthenticateValidCredentials(): void {
 		$server = $this->getMockBuilder(Server::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -639,15 +650,11 @@ class AuthTest extends TestCase {
 			->disableOriginalConstructor()
 			->getMock();
 		$server->httpRequest
-			->expects($this->at(0))
-			->method('getHeader')
-			->with('X-Requested-With')
-			->willReturn(null);
-		$server->httpRequest
-			->expects($this->at(1))
+			->expects($this->once())
 			->method('getHeader')
 			->with('Authorization')
 			->willReturn('basic dXNlcm5hbWU6cGFzc3dvcmQ=');
+
 		$server->httpResponse = $this->getMockBuilder(ResponseInterface::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -659,18 +666,18 @@ class AuthTest extends TestCase {
 		$user = $this->getMockBuilder(IUser::class)
 			->disableOriginalConstructor()
 			->getMock();
-		$user->expects($this->exactly(3))
+		$user->expects($this->exactly(2))
 			->method('getUID')
 			->willReturn('MyTestUser');
 		$this->userSession
-			->expects($this->exactly(4))
+			->expects($this->exactly(3))
 			->method('getUser')
 			->willReturn($user);
 		$response = $this->auth->check($server->httpRequest, $server->httpResponse);
 		$this->assertEquals([true, 'principals/users/MyTestUser'], $response);
 	}
 
-	public function testAuthenticateInvalidCredentials() {
+	public function testAuthenticateInvalidCredentials(): void {
 		$server = $this->getMockBuilder(Server::class)
 			->disableOriginalConstructor()
 			->getMock();
@@ -678,15 +685,12 @@ class AuthTest extends TestCase {
 			->disableOriginalConstructor()
 			->getMock();
 		$server->httpRequest
-			->expects($this->at(0))
+			->expects($this->exactly(2))
 			->method('getHeader')
-			->with('X-Requested-With')
-			->willReturn(null);
-		$server->httpRequest
-			->expects($this->at(1))
-			->method('getHeader')
-			->with('Authorization')
-			->willReturn('basic dXNlcm5hbWU6cGFzc3dvcmQ=');
+			->willReturnMap([
+				['Authorization', 'basic dXNlcm5hbWU6cGFzc3dvcmQ='],
+				['X-Requested-With', null],
+			]);
 		$server->httpResponse = $this->getMockBuilder(ResponseInterface::class)
 			->disableOriginalConstructor()
 			->getMock();

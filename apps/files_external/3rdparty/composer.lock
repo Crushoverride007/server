@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "524c99fd87297e01d004eb5a4e53b04c",
+    "content-hash": "1b75bb2715ed2dae7d090ae40b9843a2",
     "packages": [
         {
             "name": "icewind/smb",
-            "version": "v3.5.2",
+            "version": "v3.7.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/icewind1991/SMB.git",
-                "reference": "0a425bd21acf7ae112b135dca34640e1b1a825c3"
+                "reference": "e6904cbe75f678335092f4861c60c656b1a99e84"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/icewind1991/SMB/zipball/0a425bd21acf7ae112b135dca34640e1b1a825c3",
-                "reference": "0a425bd21acf7ae112b135dca34640e1b1a825c3",
+                "url": "https://api.github.com/repos/icewind1991/SMB/zipball/e6904cbe75f678335092f4861c60c656b1a99e84",
+                "reference": "e6904cbe75f678335092f4861c60c656b1a99e84",
                 "shasum": ""
             },
             "require": {
@@ -49,22 +49,22 @@
             "description": "php wrapper for smbclient and libsmbclient-php",
             "support": {
                 "issues": "https://github.com/icewind1991/SMB/issues",
-                "source": "https://github.com/icewind1991/SMB/tree/v3.5.2"
+                "source": "https://github.com/icewind1991/SMB/tree/v3.7.0"
             },
-            "time": "2022-01-20T14:51:51+00:00"
+            "time": "2024-11-11T14:08:34+00:00"
         },
         {
             "name": "icewind/streams",
-            "version": "v0.7.4",
+            "version": "v0.7.7",
             "source": {
                 "type": "git",
                 "url": "https://github.com/icewind1991/Streams.git",
-                "reference": "93bce472202d36d9808c30eaa52a1dc72b39e04c"
+                "reference": "64200fd7cfcc7f550c3c695c48d8fd8bba97fecb"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/icewind1991/Streams/zipball/93bce472202d36d9808c30eaa52a1dc72b39e04c",
-                "reference": "93bce472202d36d9808c30eaa52a1dc72b39e04c",
+                "url": "https://api.github.com/repos/icewind1991/Streams/zipball/64200fd7cfcc7f550c3c695c48d8fd8bba97fecb",
+                "reference": "64200fd7cfcc7f550c3c695c48d8fd8bba97fecb",
                 "shasum": ""
             },
             "require": {
@@ -94,18 +94,18 @@
             "description": "A set of generic stream wrappers",
             "support": {
                 "issues": "https://github.com/icewind1991/Streams/issues",
-                "source": "https://github.com/icewind1991/Streams/tree/v0.7.4"
+                "source": "https://github.com/icewind1991/Streams/tree/v0.7.7"
             },
-            "time": "2021-03-12T15:48:22+00:00"
+            "time": "2023-03-16T14:52:25+00:00"
         }
     ],
     "packages-dev": [],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": false,
     "prefer-lowest": false,
-    "platform": [],
-    "platform-dev": [],
-    "plugin-api-version": "2.2.0"
+    "platform": {},
+    "platform-dev": {},
+    "plugin-api-version": "2.6.0"
 }

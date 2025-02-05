@@ -1,44 +1,15 @@
 <?php
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- * @copyright Copyright (c) 2018, Georg Ehrke
- *
- * @author Arthur Schiwon <blizzz@arthur-schiwon.de>
- * @author Bart Visscher <bartv@thisnet.nl>
- * @author Christoph Seitz <christoph.seitz@posteo.de>
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Daniel Kesselberg <mail@danielkesselberg.de>
- * @author Georg Ehrke <oc.list@georgehrke.com>
- * @author Jakob Sack <mail@jakobsack.de>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Julius Härtl <jus@bitgrid.net>
- * @author Lukas Reschke <lukas@statuscode.ch>
- * @author Maxence Lange <maxence@artificial-owl.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Thomas Müller <thomas.mueller@tmit.eu>
- * @author Vincent Petry <vincent@nextcloud.com>
- * @author Vinicius Cubas Brand <vinicius@eita.org.br>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\Connector\Sabre;
 
 use OC\KnownUser\KnownUserService;
+use OCA\Circles\Api\v1\Circles;
 use OCA\Circles\Exceptions\CircleNotFoundException;
+use OCA\Circles\Model\Circle;
 use OCA\DAV\CalDAV\Proxy\ProxyMapper;
 use OCA\DAV\Traits\PrincipalProxyTrait;
 use OCP\Accounts\IAccountManager;
@@ -61,24 +32,6 @@ use Sabre\DAVACL\PrincipalBackend\BackendInterface;
 
 class Principal implements BackendInterface {
 
-	/** @var IUserManager */
-	private $userManager;
-
-	/** @var IGroupManager */
-	private $groupManager;
-
-	/** @var IAccountManager */
-	private $accountManager;
-
-	/** @var IShareManager */
-	private $shareManager;
-
-	/** @var IUserSession */
-	private $userSession;
-
-	/** @var IAppManager */
-	private $appManager;
-
 	/** @var string */
 	private $principalPrefix;
 
@@ -94,34 +47,23 @@ class Principal implements BackendInterface {
 	/** @var KnownUserService */
 	private $knownUserService;
 
-	/** @var IConfig */
-	private $config;
-	/** @var IFactory */
-	private $languageFactory;
-
-	public function __construct(IUserManager $userManager,
-								IGroupManager $groupManager,
-								IAccountManager $accountManager,
-								IShareManager $shareManager,
-								IUserSession $userSession,
-								IAppManager $appManager,
-								ProxyMapper $proxyMapper,
-								KnownUserService $knownUserService,
-								IConfig $config,
-								IFactory $languageFactory,
-								string $principalPrefix = 'principals/users/') {
-		$this->userManager = $userManager;
-		$this->groupManager = $groupManager;
-		$this->accountManager = $accountManager;
-		$this->shareManager = $shareManager;
-		$this->userSession = $userSession;
-		$this->appManager = $appManager;
+	public function __construct(
+		private IUserManager $userManager,
+		private IGroupManager $groupManager,
+		private IAccountManager $accountManager,
+		private IShareManager $shareManager,
+		private IUserSession $userSession,
+		private IAppManager $appManager,
+		ProxyMapper $proxyMapper,
+		KnownUserService $knownUserService,
+		private IConfig $config,
+		private IFactory $languageFactory,
+		string $principalPrefix = 'principals/users/',
+	) {
 		$this->principalPrefix = trim($principalPrefix, '/');
 		$this->hasGroups = $this->hasCircles = ($principalPrefix === 'principals/users/');
 		$this->proxyMapper = $proxyMapper;
 		$this->knownUserService = $knownUserService;
-		$this->config = $config;
-		$this->languageFactory = $languageFactory;
 	}
 
 	use PrincipalProxyTrait {
@@ -208,6 +150,11 @@ class Principal implements BackendInterface {
 					'{DAV:}displayname' => $group->getDisplayName(),
 				];
 			}
+		} elseif ($prefix === 'principals/system') {
+			return [
+				'uri' => 'principals/system/' . $name,
+				'{DAV:}displayname' => $this->languageFactory->get('dav')->t('Accounts'),
+			];
 		}
 		return null;
 	}
@@ -255,6 +202,7 @@ class Principal implements BackendInterface {
 	 * @return int
 	 */
 	public function updatePrincipal($path, PropPatch $propPatch) {
+		// Updating schedule-default-calendar-URL is handled in CustomPropertiesBackend
 		return 0;
 	}
 
@@ -482,7 +430,7 @@ class Principal implements BackendInterface {
 			$restrictGroups = $this->groupManager->getUserGroupIds($user);
 		}
 
-		if (strpos($uri, 'mailto:') === 0) {
+		if (str_starts_with($uri, 'mailto:')) {
 			if ($principalPrefix === 'principals/users') {
 				$users = $this->userManager->getByEmail(substr($uri, 7));
 				if (count($users) !== 1) {
@@ -500,7 +448,7 @@ class Principal implements BackendInterface {
 				return $this->principalPrefix . '/' . $user->getUID();
 			}
 		}
-		if (substr($uri, 0, 10) === 'principal:') {
+		if (str_starts_with($uri, 'principal:')) {
 			$principal = substr($uri, 10);
 			$principal = $this->getPrincipalByPath($principal);
 			if ($principal !== null) {
@@ -555,7 +503,7 @@ class Principal implements BackendInterface {
 		}
 
 		try {
-			$circle = \OCA\Circles\Api\v1\Circles::detailsCircle($circleUniqueId, true);
+			$circle = Circles::detailsCircle($circleUniqueId, true);
 		} catch (QueryException $ex) {
 			return null;
 		} catch (CircleNotFoundException $ex) {
@@ -580,7 +528,7 @@ class Principal implements BackendInterface {
 	 * @param string $principal
 	 * @return array
 	 * @throws Exception
-	 * @throws \OCP\AppFramework\QueryException
+	 * @throws QueryException
 	 * @suppress PhanUndeclaredClassMethod
 	 */
 	public function getCircleMembership($principal):array {
@@ -595,10 +543,10 @@ class Principal implements BackendInterface {
 				throw new Exception('Principal not found');
 			}
 
-			$circles = \OCA\Circles\Api\v1\Circles::joinedCircles($name, true);
+			$circles = Circles::joinedCircles($name, true);
 
 			$circles = array_map(function ($circle) {
-				/** @var \OCA\Circles\Model\Circle $circle */
+				/** @var Circle $circle */
 				return 'principals/circles/' . urlencode($circle->getSingleId());
 			}, $circles);
 
@@ -606,5 +554,45 @@ class Principal implements BackendInterface {
 		}
 
 		return [];
+	}
+
+	/**
+	 * Get all email addresses associated to a principal.
+	 *
+	 * @param array $principal Data from getPrincipal*()
+	 * @return string[] All email addresses without the mailto: prefix
+	 */
+	public function getEmailAddressesOfPrincipal(array $principal): array {
+		$emailAddresses = [];
+
+		if (isset($principal['{http://sabredav.org/ns}email-address'])) {
+			$emailAddresses[] = $principal['{http://sabredav.org/ns}email-address'];
+		}
+
+		if (isset($principal['{DAV:}alternate-URI-set'])) {
+			foreach ($principal['{DAV:}alternate-URI-set'] as $address) {
+				if (str_starts_with($address, 'mailto:')) {
+					$emailAddresses[] = substr($address, 7);
+				}
+			}
+		}
+
+		if (isset($principal['{urn:ietf:params:xml:ns:caldav}calendar-user-address-set'])) {
+			foreach ($principal['{urn:ietf:params:xml:ns:caldav}calendar-user-address-set'] as $address) {
+				if (str_starts_with($address, 'mailto:')) {
+					$emailAddresses[] = substr($address, 7);
+				}
+			}
+		}
+
+		if (isset($principal['{http://calendarserver.org/ns/}email-address-set'])) {
+			foreach ($principal['{http://calendarserver.org/ns/}email-address-set'] as $address) {
+				if (str_starts_with($address, 'mailto:')) {
+					$emailAddresses[] = substr($address, 7);
+				}
+			}
+		}
+
+		return array_values(array_unique($emailAddresses));
 	}
 }

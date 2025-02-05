@@ -1,22 +1,7 @@
 /**
- * ownCloud
- *
- * @author Vincent Petry
- * @copyright 2014 Vincent Petry <pvince81@owncloud.com>
- *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU AFFERO GENERAL PUBLIC LICENSE
- * License as published by the Free Software Foundation; either
- * version 3 of the License, or any later version.
- *
- * This library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU AFFERO GENERAL PUBLIC LICENSE for more details.
- *
- * You should have received a copy of the GNU Affero General Public
- * License along with this library.  If not, see <http://www.gnu.org/licenses/>.
- *
+ * SPDX-FileCopyrightText: 2016-2023 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014-2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
 /**
@@ -50,42 +35,15 @@ module.exports = function(config) {
 			'files',
 			'files_versions',
 			{
-				name: 'comments',
-				srcFiles: [
-					'dist/comments-comments.js'
-				],
-				testFiles: ['apps/comments/tests/js/**/*.js']
-			},
-			{
 				name: 'files_sharing',
 				srcFiles: [
 					// only test these files, others are not ready and mess
 					// up with the global namespace/classes/state
 					'dist/files_sharing-additionalScripts.js',
 					'dist/files_sharing-files_sharing_tab.js',
-					'dist/files_sharing-files_sharing.js',
 					'dist/files_sharing-main.js',
-					'apps/files_sharing/js/files_drop.js',
-					'apps/files_sharing/js/public.js',
-					'apps/files_sharing/js/sharedfilelist.js',
-					'apps/files_sharing/js/templates.js',
 				],
-				testFiles: ['apps/files_sharing/tests/js/*.js']
 			},
-			{
-				name: 'files_external',
-				srcFiles: [
-					// only test these files, others are not ready and mess
-					// up with the global namespace/classes/state
-					'apps/files_external/js/app.js',
-					'apps/files_external/js/templates.js',
-					'apps/files_external/js/mountsfilelist.js',
-					'apps/files_external/js/settings.js',
-					'apps/files_external/js/statusmanager.js'
-				],
-				testFiles: ['apps/files_external/tests/js/*.js']
-			},
-			'systemtags',
 			'files_trashbin',
 		];
 	}

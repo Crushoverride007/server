@@ -1,27 +1,9 @@
 <?php
+
 /**
- * @copyright Copyright (c) 2016, ownCloud, Inc.
- *
- * @author Christoph Wurst <christoph@winzerhof-wurst.at>
- * @author Joas Schilling <coding@schilljs.com>
- * @author Morris Jobke <hey@morrisjobke.de>
- * @author Roeland Jago Douma <roeland@famdouma.nl>
- * @author Vincent Petry <vincent@nextcloud.com>
- *
- * @license AGPL-3.0
- *
- * This code is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License, version 3,
- * as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License, version 3,
- * along with this program. If not, see <http://www.gnu.org/licenses/>
- *
+ * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+ * SPDX-License-Identifier: AGPL-3.0-only
  */
 namespace OCA\DAV\SystemTag;
 
@@ -40,58 +22,19 @@ use Sabre\DAV\ICollection;
  * Collection containing tags by object id
  */
 class SystemTagsObjectMappingCollection implements ICollection {
-
-	/**
-	 * @var string
-	 */
-	private $objectId;
-
-	/**
-	 * @var string
-	 */
-	private $objectType;
-
-	/**
-	 * @var ISystemTagManager
-	 */
-	private $tagManager;
-
-	/**
-	 * @var ISystemTagObjectMapper
-	 */
-	private $tagMapper;
-
-	/**
-	 * User
-	 *
-	 * @var IUser
-	 */
-	private $user;
-
-
-	/**
-	 * Constructor
-	 *
-	 * @param string $objectId object id
-	 * @param string $objectType object type
-	 * @param IUser $user user
-	 * @param ISystemTagManager $tagManager tag manager
-	 * @param ISystemTagObjectMapper $tagMapper tag mapper
-	 */
 	public function __construct(
-		$objectId,
-		$objectType,
-		IUser $user,
-		ISystemTagManager $tagManager,
-		ISystemTagObjectMapper $tagMapper
+		private string $objectId,
+		private string $objectType,
+		private IUser $user,
+		private ISystemTagManager $tagManager,
+		private ISystemTagObjectMapper $tagMapper,
+		protected \Closure $childWriteAccessFunction,
 	) {
-		$this->tagManager = $tagManager;
-		$this->tagMapper = $tagMapper;
-		$this->objectId = $objectId;
-		$this->objectType = $objectType;
-		$this->user = $user;
 	}
 
+	/**
+	 * @return void
+	 */
 	public function createFile($name, $data = null) {
 		$tagId = $name;
 		try {
@@ -103,17 +46,26 @@ class SystemTagsObjectMappingCollection implements ICollection {
 			if (!$this->tagManager->canUserAssignTag($tag, $this->user)) {
 				throw new Forbidden('No permission to assign tag ' . $tagId);
 			}
-
+			$writeAccessFunction = $this->childWriteAccessFunction;
+			if (!$writeAccessFunction($this->objectId)) {
+				throw new Forbidden('No permission to assign tag to ' . $this->objectId);
+			}
 			$this->tagMapper->assignTags($this->objectId, $this->objectType, $tagId);
 		} catch (TagNotFoundException $e) {
 			throw new PreconditionFailed('Tag with id ' . $tagId . ' does not exist, cannot assign');
 		}
 	}
 
+	/**
+	 * @return never
+	 */
 	public function createDirectory($name) {
 		throw new Forbidden('Permission denied to create collections');
 	}
 
+	/**
+	 * @return SystemTagMappingNode
+	 */
 	public function getChild($tagName) {
 		try {
 			if ($this->tagMapper->haveTag([$this->objectId], $this->objectType, $tagName, true)) {
@@ -131,6 +83,11 @@ class SystemTagsObjectMappingCollection implements ICollection {
 		}
 	}
 
+	/**
+	 * @return SystemTagMappingNode[]
+	 *
+	 * @psalm-return list<SystemTagMappingNode>
+	 */
 	public function getChildren() {
 		$tagIds = current($this->tagMapper->getTagIdsForObjects([$this->objectId], $this->objectType));
 		if (empty($tagIds)) {
@@ -168,6 +125,9 @@ class SystemTagsObjectMappingCollection implements ICollection {
 		}
 	}
 
+	/**
+	 * @return never
+	 */
 	public function delete() {
 		throw new Forbidden('Permission denied to delete this collection');
 	}
@@ -176,6 +136,9 @@ class SystemTagsObjectMappingCollection implements ICollection {
 		return $this->objectId;
 	}
 
+	/**
+	 * @return never
+	 */
 	public function setName($name) {
 		throw new Forbidden('Permission denied to rename this collection');
 	}
@@ -183,7 +146,7 @@ class SystemTagsObjectMappingCollection implements ICollection {
 	/**
 	 * Returns the last modification time, as a unix timestamp
 	 *
-	 * @return int
+	 * @return null
 	 */
 	public function getLastModified() {
 		return null;
@@ -204,7 +167,8 @@ class SystemTagsObjectMappingCollection implements ICollection {
 			$this->objectType,
 			$this->user,
 			$this->tagManager,
-			$this->tagMapper
+			$this->tagMapper,
+			$this->childWriteAccessFunction,
 		);
 	}
 }

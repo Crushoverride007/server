@@ -1,3 +1,7 @@
+/**
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
 jQuery(document).ready(function() {
 	$('#app-token-login').click(function (e) {
 		e.preventDefault();
@@ -10,4 +14,6 @@ jQuery(document).ready(function() {
 		e.preventDefault();
 		document.location.href = e.target.attributes.action.value
 	})
+
+	$('#login-form input').removeAttr('disabled');
 })
